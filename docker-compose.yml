@@ -1,0 +1,33 @@
+services:
+  castcharm:
+    build: .
+    container_name: castcharm
+    ports:
+      - "${PORT:-8000}:8000"
+    volumes:
+      # Database and app state — defaults to ./data next to this file.
+      # Override DATA_PATH in .env to store it elsewhere (e.g. a NAS mount).
+      # To back up: copy this folder. To restore: stop the container, replace
+      # the folder, start again.
+      - ${DATA_PATH:-./data}:/data
+      # Audio files — defaults to ./downloads next to this file.
+      # Override DOWNLOAD_PATH in .env to point at an existing media directory.
+      - ${DOWNLOAD_PATH:-./downloads}:/downloads
+    environment:
+      - DATABASE_URL=sqlite:////data/castcharm.db
+      - DEFAULT_DOWNLOAD_PATH=/downloads
+      - CLEAN_RSS_PATH=/downloads/clean-rss
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"

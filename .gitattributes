@@ -1,0 +1,8 @@
+# Default: normalize to LF on commit, check out as-is
+* text=auto
+
+# Shell scripts must always be LF — CRLF breaks sh/bash inside Linux containers
+*.sh text eol=lf
+
+# Python
+*.py text eol=lf
