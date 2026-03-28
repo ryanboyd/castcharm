@@ -72,7 +72,7 @@ def _claim_next() -> int | None:
             ep = (
                 db.query(Episode)
                 .filter(Episode.status == "queued")
-                .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
+                .order_by(Episode.queued_at.asc().nullslast(), Episode.id.asc())
                 .first()
             )
             if ep is None:

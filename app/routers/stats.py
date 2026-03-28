@@ -427,12 +427,12 @@ def get_global_stats(db: Session = Depends(get_db)):
         ))
     by_feed.sort(key=lambda x: x.storage_bytes, reverse=True)
 
-    # Build per-primary-feed duration lists for the overlay chart (≥3 episodes only)
+    # Build per-primary-feed duration lists for the overlay chart (at least 1 episode)
     feed_durations = []
     for f in feeds:
         ids = sub_map[f.id]
         durs = [s for i in ids for s in dur_list_by.get(i, [])]
-        if len(durs) >= 3:
+        if len(durs) >= 1:
             feed_durations.append(FeedDurationsOut(
                 feed_id=f.id,
                 title=f.title or f.url,

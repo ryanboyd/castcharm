@@ -68,10 +68,12 @@ def _refresh_feed_job(feed_id: int):
 
                 if auto_dl:
                     from app.downloader import enqueue_download
+                    now = datetime.utcnow()
                     for ep_id in new_ids:
                         ep = db.query(Episode).filter(Episode.id == ep_id).first()
                         if ep and ep.status == "pending":
                             ep.status = "queued"
+                            ep.queued_at = now
                     db.commit()
                     for ep_id in new_ids:
                         enqueue_download(ep_id)

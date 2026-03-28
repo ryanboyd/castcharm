@@ -49,8 +49,8 @@ def _bulk_episode_counts(feed_ids: list[int], db: Session) -> dict[int, dict]:
             feed_id,
             COUNT(CASE WHEN hidden = 0                                                        THEN 1 END) AS episode_count,
             COUNT(CASE WHEN status = 'downloaded'           AND hidden = 0                    THEN 1 END) AS downloaded_count,
-            COUNT(CASE WHEN status IN ('pending','failed')  AND hidden = 0                    THEN 1 END) AS available_count,
-            COUNT(CASE WHEN status IN ('pending','failed')  AND hidden = 0 AND played = 0
+            COUNT(CASE WHEN status IN ('pending','failed')  AND hidden = 0 AND enclosure_url IS NOT NULL                    THEN 1 END) AS available_count,
+            COUNT(CASE WHEN status IN ('pending','failed')  AND hidden = 0 AND enclosure_url IS NOT NULL AND played = 0
                             AND (play_position_seconds IS NULL OR play_position_seconds = 0)  THEN 1 END) AS unplayed_available_count,
             COUNT(CASE WHEN status = 'skipped'                                                THEN 1 END) AS skipped_count,
             COUNT(CASE WHEN hidden = 1                                                        THEN 1 END) AS hidden_count,
@@ -525,8 +525,10 @@ def download_all_feed(feed_id: int, db: Session = Depends(get_db)):
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
         .all()
     )
+    now = datetime.utcnow()
     for ep in episodes:
         ep.status = "queued"
+        ep.queued_at = now
         ep.error_message = None
     db.commit()
 
@@ -559,8 +561,10 @@ def download_unplayed_feed(feed_id: int, db: Session = Depends(get_db)):
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
         .all()
     )
+    now = datetime.utcnow()
     for ep in episodes:
         ep.status = "queued"
+        ep.queued_at = now
         ep.error_message = None
     db.commit()
 
@@ -569,6 +573,37 @@ def download_unplayed_feed(feed_id: int, db: Session = Depends(get_db)):
         enqueue_download(ep.id)
 
     return {"queued": len(episodes)}
+
+
+@router.get("/{feed_id}/queue-count")
+def feed_queue_count(feed_id: int, db: Session = Depends(get_db)):
+    """Return count of queued+downloading episodes for the podcast group (primary + supplementary feeds)."""
+    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
+    all_ids = [feed_id] + sub_ids
+    count = db.query(func.count(Episode.id)).filter(
+        Episode.feed_id.in_(all_ids),
+        Episode.status.in_(["queued", "downloading"]),
+    ).scalar() or 0
+    return {"count": int(count)}
+
+
+@router.post("/{feed_id}/cancel-queued")
+def cancel_feed_queued(feed_id: int, db: Session = Depends(get_db)):
+    """Cancel all queued and downloading episodes for this podcast group, returning them to pending."""
+    from app.downloader import request_cancel
+    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
+    all_ids = [feed_id] + sub_ids
+    episodes = db.query(Episode).filter(
+        Episode.feed_id.in_(all_ids),
+        Episode.status.in_(["queued", "downloading"]),
+    ).all()
+    for ep in episodes:
+        request_cancel(ep.id)
+        ep.status = "pending"
+        ep.error_message = None
+        ep.download_progress = 0
+    db.commit()
+    return {"cancelled": len(episodes)}
 
 
 @router.post("/{feed_id}/renumber")
@@ -989,8 +1024,10 @@ def _bg_sync(feed_id: int):
                     )
                     .all()
                 )
+                now = datetime.utcnow()
                 for ep in eps_to_queue:
                     ep.status = "queued"
+                    ep.queued_at = now
                     ep.error_message = None
                 db.commit()
                 from app.downloader import enqueue_download

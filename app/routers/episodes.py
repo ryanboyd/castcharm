@@ -1,6 +1,8 @@
 import logging
 import os
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from datetime import datetime
+from typing import Optional
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from app.downloader import enqueue_download
 from pydantic import BaseModel
 from sqlalchemy import or_
@@ -150,6 +152,8 @@ def list_episodes(
     search: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    download_since: Optional[datetime] = None,
+    sort: str | None = None,
     db: Session = Depends(get_db),
 ):
     q = db.query(Episode).options(joinedload(Episode.feed))
@@ -162,7 +166,12 @@ def list_episodes(
     if search:
         pat = f"%{search}%"
         q = q.filter(or_(Episode.title.ilike(pat), Episode.description.ilike(pat)))
-    episodes = q.order_by(Episode.published_at.desc()).offset(offset).limit(limit).all()
+    if download_since is not None:
+        q = q.filter(Episode.download_date >= download_since)
+    if sort == "download_date":
+        episodes = q.order_by(Episode.download_date.desc().nullslast(), Episode.id.desc()).offset(offset).limit(limit).all()
+    else:
+        episodes = q.order_by(Episode.published_at.desc()).offset(offset).limit(limit).all()
     return [_ep_out(ep) for ep in episodes]
 
 
@@ -206,8 +215,10 @@ def queue_all_downloads(db: Session = Depends(get_db)):
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
         .all()
     )
+    now = datetime.utcnow()
     for ep in episodes:
         ep.status = "queued"
+        ep.queued_at = now
         ep.error_message = None
     db.commit()
 
@@ -232,8 +243,10 @@ def queue_unplayed_downloads(db: Session = Depends(get_db)):
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
         .all()
     )
+    now = datetime.utcnow()
     for ep in episodes:
         ep.status = "queued"
+        ep.queued_at = now
         ep.error_message = None
     db.commit()
 
@@ -370,6 +383,7 @@ def queue_download(episode_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Episode is already queued or downloading")
 
     ep.status = "queued"
+    ep.queued_at = datetime.utcnow()
     ep.error_message = None
     db.commit()
     db.refresh(ep)
@@ -393,6 +407,7 @@ def retry_download(episode_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=409, detail="Episode cannot be retried in its current state")
 
     ep.status = "queued"
+    ep.queued_at = datetime.utcnow()
     ep.error_message = None
     ep.download_progress = 0
     db.commit()
@@ -713,8 +728,10 @@ def retry_all_failed(db: Session = Depends(get_db)):
         .filter(Episode.status == "failed", Episode.hidden.is_(False))
         .all()
     )
+    now = datetime.utcnow()
     for ep in episodes:
         ep.status = "queued"
+        ep.queued_at = now
         ep.error_message = None
         ep.download_progress = 0
     db.commit()
@@ -746,9 +763,11 @@ def bulk_action(body: BulkBody, db: Session = Depends(get_db)):
     action = body.action
 
     if action == "download":
+        now = datetime.utcnow()
         for ep in episodes:
             if ep.status not in ("downloaded", "queued", "downloading"):
                 ep.status = "queued"
+                ep.queued_at = now
                 ep.error_message = None
                 affected += 1
         db.commit()

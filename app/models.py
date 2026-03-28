@@ -150,6 +150,7 @@ class Episode(Base):
     file_size = Column(BigInteger, nullable=True)
     download_progress = Column(Integer, default=0)  # 0-100
     download_date = Column(DateTime, nullable=True)
+    queued_at = Column(DateTime, nullable=True)
     error_message = Column(Text, nullable=True)
 
     # User-supplied cover art (overrides episode_image_url from RSS)

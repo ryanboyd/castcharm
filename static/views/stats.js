@@ -202,103 +202,58 @@ function _buildOverlayInner(data) {
   </div>`;
 }
 
-function _cardSlideIn(el) {
-  if (!el) return;
-  el.style.opacity = "0";
-  el.style.transform = "translateY(12px)";
-  requestAnimationFrame(() => requestAnimationFrame(() => {
-    el.style.transition = "opacity 0.22s ease, transform 0.22s ease";
-    el.style.opacity = "";
-    el.style.transform = "";
-    setTimeout(() => { el.style.transition = ""; }, 240);
-  }));
+// ── Animation helpers ─────────────────────────────────────────────────────────
+
+// Flip all .card/.stat-card elements out, then call cb() after they're gone.
+function _flipCardsOut(cb) {
+  const cards = [...document.querySelectorAll("#stats-overview .card, #stats-overview .stat-card")];
+  if (!cards.length) { cb(); return; }
+  cards.forEach(el => {
+    el.style.transition = "transform 0.13s ease, opacity 0.13s ease";
+    el.style.transform = "perspective(700px) rotateY(90deg)";
+    el.style.opacity = "0";
+  });
+  setTimeout(cb, 140);
 }
 
-function _cardSlideOut(el) {
-  if (!el) return;
-  el.style.transition = "opacity 0.18s ease, transform 0.18s ease";
-  el.style.opacity = "0";
-  el.style.transform = "translateY(8px) scale(0.97)";
-  setTimeout(() => el.remove(), 200);
+// Flip all .card/.stat-card elements in (call after innerHTML is set).
+function _flipCardsIn() {
+  const cards = [...document.querySelectorAll("#stats-overview .card, #stats-overview .stat-card")];
+  cards.forEach((el, i) => {
+    const delay = i * 12;
+    el.style.transition = "none";
+    el.style.transform = "perspective(700px) rotateY(-90deg)";
+    el.style.opacity = "0";
+    void el.offsetHeight;
+    el.style.transition = `transform 0.18s ease ${delay}ms, opacity 0.16s ease ${delay}ms`;
+    el.style.transform = "";
+    el.style.opacity = "";
+    setTimeout(() => { el.style.transition = ""; }, 200 + delay);
+  });
+}
+
+// Show a centered spinner in place of the overview panels.
+function _showOverviewSpinner() {
+  document.getElementById("stats-overview").innerHTML =
+    `<div style="display:flex;justify-content:center;padding:80px 0">
+      <div class="spinner"></div>
+    </div>`;
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 function _renderOverview(data, feedTitle) {
-  // First render: build everything from scratch
-  if (!document.getElementById("sc-kpi")) {
+  _flipCardsOut(() => {
     _renderOverviewInner(data, feedTitle);
-    return;
-  }
-
-  const s = _deriveStats(data, feedTitle);
-  const { isGlobal } = s;
-  const showDiskDl  = isGlobal && data.by_feed.length > 1;
-  const showOverlay = isGlobal && (data.feed_durations || []).filter(f => f.durations.length >= 3).length >= 2;
-
-  document.getElementById("stats-scope-label").textContent =
-    isGlobal ? "Library-wide analytics" : `Showing stats for: ${feedTitle}`;
-
-  // Always-present sections: update content in-place, no animation
-  document.getElementById("sc-kpi").innerHTML    = _buildKpiHtml(s);
-  document.getElementById("sc-charts").innerHTML = _buildChartsInner(data);
-  document.getElementById("sc-status").innerHTML = _buildStatusCardInner(s);
-
-  // Reconcile transient donut cards
-  const hasDiskDl   = !!document.getElementById("sc-diskuse");
-  const donutRow    = document.getElementById("sc-donuts");
-  const container   = document.getElementById("stats-overview");
-
-  if (showDiskDl && !hasDiskDl) {
-    _cardSlideOut(document.getElementById("sc-duration"));
-    const diskEl = document.createElement("div");
-    diskEl.className = "card"; diskEl.id = "sc-diskuse";
-    diskEl.innerHTML = _buildDiskUseCardInner(data);
-    donutRow.appendChild(diskEl);
-    _cardSlideIn(diskEl);
-    const dlEl = document.createElement("div");
-    dlEl.className = "card"; dlEl.id = "sc-downloaded";
-    dlEl.innerHTML = _buildDownloadedCardInner(data);
-    donutRow.appendChild(dlEl);
-    _cardSlideIn(dlEl);
-  } else if (!showDiskDl && hasDiskDl) {
-    _cardSlideOut(document.getElementById("sc-diskuse"));
-    _cardSlideOut(document.getElementById("sc-downloaded"));
-    setTimeout(() => {
-      const durEl = document.createElement("div");
-      durEl.className = "card"; durEl.id = "sc-duration";
-      durEl.innerHTML = _buildDurationCardInner(data);
-      donutRow.appendChild(durEl);
-      _cardSlideIn(durEl);
-    }, 210);
-  } else if (showDiskDl) {
-    document.getElementById("sc-diskuse").innerHTML   = _buildDiskUseCardInner(data);
-    document.getElementById("sc-downloaded").innerHTML = _buildDownloadedCardInner(data);
-  } else if (document.getElementById("sc-duration")) {
-    document.getElementById("sc-duration").innerHTML = _buildDurationCardInner(data);
-  }
-
-  // Reconcile overlay section
-  const overlayEl = document.getElementById("sc-overlay");
-  if (showOverlay && !overlayEl) {
-    const ovEl = document.createElement("div");
-    ovEl.id = "sc-overlay";
-    ovEl.style.cssText = "margin-bottom:16px;margin-top:16px";
-    ovEl.innerHTML = _buildOverlayInner(data);
-    container.appendChild(ovEl);
-    _cardSlideIn(ovEl.querySelector(".card"));
-  } else if (!showOverlay && overlayEl) {
-    _cardSlideOut(overlayEl);
-  } else if (showOverlay) {
-    overlayEl.innerHTML = _buildOverlayInner(data);
-  }
+    _flipCardsIn();
+  });
 }
 
 function _renderOverviewInner(data, feedTitle) {
   const s = _deriveStats(data, feedTitle);
   const { isGlobal } = s;
   const showDiskDl  = isGlobal && data.by_feed.length > 1;
-  const showOverlay = isGlobal && (data.feed_durations || []).filter(f => f.durations.length >= 3).length >= 2;
+  const showOverlay = isGlobal && (data.feed_durations || []).filter(f => f.durations.length >= 1).length >= 2;
 
   document.getElementById("stats-scope-label").textContent =
     isGlobal ? "Library-wide analytics" : `Showing stats for: ${feedTitle}`;
@@ -332,11 +287,17 @@ function _renderOverviewInner(data, feedTitle) {
 // ============================================================
 
 window.toggleFeedFocus = async function (feedId) {
-  // Clicking the active feed → revert to global
+  const contentEl = document.getElementById("content");
+  const delay = (ms) => new Promise(r => setTimeout(r, ms));
+  const flipOut = () => new Promise(r => _flipCardsOut(r));
+
+  // Clicking the active feed → revert to global (data already cached, no fetch needed)
   if (_statsFocusFeedId === feedId) {
     _statsFocusFeedId = null;
-    _renderOverview(_statsGlobalData, null);
     _updateFocusButtons(null);
+    contentEl.scrollTo({ top: 0, behavior: "smooth" });
+    await delay(220);
+    _renderOverview(_statsGlobalData, null);
     return;
   }
 
@@ -345,16 +306,30 @@ window.toggleFeedFocus = async function (feedId) {
 
   _statsFocusFeedId = feedId;
   _updateFocusButtons(feedId);
-  document.getElementById("stats-scope-label").textContent = "Loading…";
+
+  // Start the fetch immediately so it runs in parallel with the animations
+  const fetchPromise = API.getFeedStats(feedId);
+
+  // 1. Scroll to top
+  contentEl.scrollTo({ top: 0, behavior: "smooth" });
+
+  // 2. Let the scroll travel, then flip cards out
+  await delay(220);
+  await flipOut();
+
+  // 3. Show spinner — fetch is in flight while we waited for animations
+  _showOverviewSpinner();
+  document.getElementById("stats-scope-label").textContent = title;
 
   try {
-    const d = await API.getFeedStats(feedId);
+    const d = await fetchPromise;
+    // 4. Animate new cards in
     _renderOverview(d, title);
   } catch (e) {
     Toast.error(e.message);
     _statsFocusFeedId = null;
-    _renderOverview(_statsGlobalData, null);
     _updateFocusButtons(null);
+    _renderOverview(_statsGlobalData, null);
   }
 };
 
@@ -505,9 +480,9 @@ function _formatBars(buckets) {
 
 function _durationOverlayChart(feedDurations) {
   const feeds = (feedDurations || [])
-    .filter(f => f.durations.length >= 3)
+    .filter(f => f.durations.length >= 1)
     .sort((a, b) => b.durations.length - a.durations.length)
-    .slice(0, 8);
+    .slice(0, 12);
 
   if (feeds.length < 2) {
     return `<div style="color:var(--text-3);font-size:13px">Not enough data</div>`;
@@ -789,7 +764,7 @@ const _DONUT_COLORS = [
 function _donutChart(items, fmtVal) {
   // items: [{label, value}]  fmtVal: (number) => string
   const sorted = [...items].filter(x => x.value > 0).sort((a, b) => b.value - a.value);
-  const TOP = 7;
+  const TOP = 12;
   let slices = sorted.slice(0, TOP);
   if (sorted.length > TOP) {
     const rest = sorted.slice(TOP).reduce((s, x) => s + x.value, 0);

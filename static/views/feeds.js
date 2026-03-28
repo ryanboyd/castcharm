@@ -239,11 +239,36 @@ async function viewFeeds() {
         document.getElementById("btn-confirm-delete")?.addEventListener("click", async () => {
           const deleteFiles = document.getElementById("del-files-chk")?.checked ?? false;
           Modal.close();
+
+          // Immediately mark feed as deleting and overlay its card
+          window._deletingFeedIds = window._deletingFeedIds || new Set();
+          window._deletingFeedIds.add(id);
+          const card = document.querySelector(`.feed-card[data-id="${id}"]`);
+          if (card) {
+            card.style.pointerEvents = "none";
+            card.insertAdjacentHTML("beforeend", `
+              <div class="feed-card-deleting" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.55);border-radius:inherit;z-index:10">
+                <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" width="36" height="36" style="opacity:0.85">
+                  <polyline points="3 6 5 6 21 6"/>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                  <path d="M10 11v6"/><path d="M14 11v6"/>
+                  <path d="M9 6V4h6v2"/>
+                </svg>
+              </div>
+            `);
+          }
+
           try {
             await API.deleteFeed(id, deleteFiles);
             Toast.success("Feed deleted");
+            window._deletingFeedIds?.delete(id);
             await _refreshFeedsGrid();
           } catch (err) {
+            // Restore card on failure
+            window._deletingFeedIds?.delete(id);
+            document.querySelector(`.feed-card[data-id="${id}"] .feed-card-deleting`)?.remove();
+            const c = document.querySelector(`.feed-card[data-id="${id}"]`);
+            if (c) c.style.pointerEvents = "";
             Toast.error(err.message);
           }
         });
@@ -379,6 +404,12 @@ function showAddFeedModal() {
       async function submit() {
         const url = urlIn.value.trim();
         if (!url) { urlIn.focus(); return; }
+        if (!/^https?:\/\//i.test(url)) {
+          errEl.textContent = "URL must start with http:// or https://";
+          errEl.style.display = "block";
+          urlIn.focus();
+          return;
+        }
         const btn = B.querySelector("#btn-add-rss");
         btn.disabled = true; btn.textContent = "Adding…"; errEl.style.display = "none";
         let feed;

@@ -86,6 +86,7 @@ const API = {
   commitImport:  (id, items) =>     API.post(`/api/feeds/${id}/import-stage`, { items }),
   downloadAllFeed:      (id) => API.post(`/api/feeds/${id}/download-all`),
   downloadUnplayedFeed: (id) => API.post(`/api/feeds/${id}/download-unplayed`),
+  cancelFeedQueued:     (id) => API.post(`/api/feeds/${id}/cancel-queued`),
   getFeedEpisodes: (id, limit, offset, order = "desc") =>
     API.get(`/api/feeds/${id}/episodes?limit=${limit}&offset=${offset}&order=${order}`),
   getFeedEpisodesWithHidden: (id, limit, offset, order = "desc") =>

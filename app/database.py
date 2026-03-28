@@ -78,6 +78,7 @@ def _migrate_db():
         ("global_settings", "auth_enabled",                "BOOLEAN DEFAULT 0"),
         ("global_settings", "auth_username",               "VARCHAR"),
         ("global_settings", "auth_password_hash",          "VARCHAR"),
+        ("episodes",        "queued_at",                   "DATETIME"),
     ]
     with engine.connect() as conn:
         for table, column, col_def in migrations:

@@ -40,13 +40,17 @@ function _miniPie(pct) {
 async function viewDashboard() {
   window._onSyncIdle = viewDashboard;
 
-  const [status, feeds, recentDL, continueEps, suggestions] = await Promise.all([
+  const [status, feeds, _recentRaw, continueEps, suggestions] = await Promise.all([
     API.getStatus(),
     API.getFeeds(),
-    API.getEpisodes({ status: "downloaded", limit: 5 }),
+    API.getEpisodes({ status: "downloaded", limit: 20 }),
     API.continueListening(5),
     API.getSuggestions(),
   ]);
+  const recentDL = _recentRaw
+    .slice()
+    .sort((a, b) => new Date(b.published_at || 0) - new Date(a.published_at || 0))
+    .slice(0, 5);
 
   const content = document.getElementById("content");
   content.innerHTML = `
@@ -127,38 +131,44 @@ async function viewDashboard() {
       </div>` : ""}
 
       ${(() => {
-        const allSuggestions = [
-          ...(suggestions.short      || []),
-          ...(suggestions.medium     || []),
-          ...(suggestions.long       || []),
-          ...(suggestions.extra_long || []),
-        ].slice(0, 6);
-        if (!allSuggestions.length) return "";
+        const buckets = [
+          { key: "short",      label: "< 15 min",   eps: suggestions.short      || [] },
+          { key: "medium",     label: "15–45 min",  eps: suggestions.medium     || [] },
+          { key: "long",       label: "45–90 min",  eps: suggestions.long       || [] },
+          { key: "extra_long", label: "90+ min",    eps: suggestions.extra_long || [] },
+        ].filter(b => b.eps.length > 0);
+        if (!buckets.length) return "";
+
+        const epRow = (ep) => `
+          <div class="activity-item" style="cursor:pointer"
+               onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
+            <div class="activity-icon" style="flex-shrink:0">
+              ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
+            </div>
+            <div class="activity-info" style="flex:1;min-width:0">
+              <div class="activity-title truncate">${ep.title || "Untitled"}</div>
+              <div class="activity-sub">
+                <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
+                      onmouseover="this.style.textDecorationColor=''"
+                      onmouseout="this.style.textDecorationColor='transparent'"
+                      onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
+              </div>
+            </div>
+            <button class="btn btn-ghost btn-sm btn-icon" title="Play"
+                    onclick="event.stopPropagation();playEpisode(${ep.id})">
+              ${svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
+            </button>
+          </div>`;
+
         return `
         <div class="card" style="margin-bottom:12px">
           <div class="card-body">
             <div class="section-title" style="margin-bottom:12px">Suggested Listening</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 24px">
-              ${allSuggestions.map(ep => `
-                <div class="activity-item" style="cursor:pointer"
-                     onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
-                  <div class="activity-icon" style="flex-shrink:0">
-                    ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
-                  </div>
-                  <div class="activity-info" style="flex:1;min-width:0">
-                    <div class="activity-title truncate">${ep.title || "Untitled"}</div>
-                    <div class="activity-sub" style="display:flex;align-items:center;gap:6px">
-                      <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
-                            onmouseover="this.style.textDecorationColor=''"
-                            onmouseout="this.style.textDecorationColor='transparent'"
-                            onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
-                      ${ep.duration ? `<span>· ${ep.duration}</span>` : ""}
-                    </div>
-                  </div>
-                  <button class="btn btn-ghost btn-sm btn-icon" title="Play"
-                          onclick="event.stopPropagation();playEpisode(${ep.id})">
-                    ${svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-                  </button>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:0 24px;align-items:start">
+              ${buckets.map(b => `
+                <div>
+                  <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border)">${b.label}</div>
+                  ${b.eps.map(epRow).join("")}
                 </div>`).join("")}
             </div>
           </div>
@@ -218,7 +228,7 @@ async function viewDashboard() {
                       <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
                             onmouseover="this.style.textDecorationColor=''"
                             onmouseout="this.style.textDecorationColor='transparent'"
-                            onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span> · ${timeAgo(ep.download_date)}${ep.file_size ? ` · ${fmtBytes(ep.file_size)}` : ""}
+                            onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span> · ${timeAgo(ep.published_at)}${ep.file_size ? ` · ${fmtBytes(ep.file_size)}` : ""}
                     </div>
                   </div>
                 </div>`).join("")}

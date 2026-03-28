@@ -40,6 +40,19 @@ function _stopDLPoll() {
   window._dlActiveTab = null;
 }
 
+// Returns an ISO timestamp string if the user has previously cleared the downloaded list,
+// or null if no clear has been performed.  Used to filter episodes for the Downloaded tab
+// so that "Clear List" persists across page reloads.
+function _dlClearedSince() {
+  const t = localStorage.getItem("dl_cleared_at");
+  return t ? new Date(+t).toISOString() : null;
+}
+
+function _dlFetchParams(extra = {}) {
+  const cs = _dlClearedSince();
+  return { status: "downloaded", limit: 100, sort: "download_date", ...(cs ? { download_since: cs } : {}), ...extra };
+}
+
 // _doDownloadedPollTick runs every 3 s while the Downloaded tab is active.
 // On each tick we fetch the current downloaded list and compare it against what
 // the DOM is showing.  New episodes (not yet in the list) are prepended to the
@@ -51,7 +64,7 @@ async function _doDownloadedPollTick() {
   if (!list) { _stopDLPoll(); return; }
 
   try {
-    const episodes = await API.getEpisodes({ status: "downloaded", limit: 100 });
+    const episodes = await API.getEpisodes(_dlFetchParams());
 
     // Guard again after async — the user may have switched tabs while the
     // request was in flight.
@@ -112,7 +125,7 @@ async function viewDownloads() {
     API.getFeeds(),
     API.getEpisodes({ status: "queued", limit: 100 }),
     API.getEpisodes({ status: "downloading", limit: 20 }),
-    API.getEpisodes({ status: "downloaded", limit: 100 }),
+    API.getEpisodes(_dlFetchParams()),
     API.getEpisodes({ status: "failed", limit: 100 }),
     API.getStatus(),
   ]);
@@ -326,8 +339,10 @@ window._dlLoadMore = async function(tabId, offset) {
         API.getEpisodes({ status: "downloading", limit: 20, offset: 0 }),
       ]);
       episodes = [...downloading, ...queued];
+    } else if (tabId === "downloaded") {
+      episodes = await API.getEpisodes(_dlFetchParams({ offset }));
     } else {
-      episodes = await API.getEpisodes({ status: tabId === "downloaded" ? "downloaded" : "failed", limit: 100, offset });
+      episodes = await API.getEpisodes({ status: "failed", limit: 100, offset });
     }
 
     const list = document.getElementById("dl-episode-list");
@@ -361,7 +376,7 @@ async function _refreshDownloadedTab() {
   _fadeOutTabContent();
   await new Promise((r) => setTimeout(r, 190));
   try {
-    const episodes = await API.getEpisodes({ status: "downloaded", limit: 100 });
+    const episodes = await API.getEpisodes(_dlFetchParams());
     if (window._dlData) window._dlData.downloaded = episodes;
     tc.innerHTML = _renderDownloadedTab(episodes);
     _fadeInTabContent(tc);
@@ -369,6 +384,7 @@ async function _refreshDownloadedTab() {
 }
 
 window._clearDLList = function() {
+  localStorage.setItem("dl_cleared_at", Date.now().toString());
   if (window._dlData) window._dlData.downloaded = [];
   const list = document.getElementById("dl-episode-list");
   if (!list) return;
@@ -379,7 +395,7 @@ window._clearDLList = function() {
     list.innerHTML = `<div class="empty-state">
       <div class="empty-state-icon">${svg('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', 'style="width:40px;height:40px;display:block;margin:0 auto;color:var(--text-3)"')}</div>
       <div class="empty-state-title">List cleared</div>
-      <div class="empty-state-desc"><button class="btn btn-ghost btn-sm" onclick="_refreshDownloadedTab()">Refresh</button></div>
+      <div class="empty-state-desc">New downloads will appear here automatically</div>
     </div>`;
     document.getElementById("dl-show-more-bar")?.remove();
     const bar = document.querySelector("#dl-tab-content .card > div:first-child");
@@ -548,19 +564,26 @@ function _wireFailedActions() {
   });
 }
 
-// Animate all episode rows in the current tab out, then show an empty-state message.
+// Fade the whole card out, swap to empty-state, fade back in.
+// Avoids the shrink-then-pop caused by animating individual rows out
+// and then injecting a full-height empty state.
 function _clearTabRows(emptyTitle) {
   const list = document.getElementById("dl-episode-list");
   if (!list) return;
-  const rows = [...list.querySelectorAll(".episode-item")];
-  for (const row of rows) animateRemove(row);
-  if (rows.length > 0) {
-    setTimeout(() => {
-      if (!list.querySelector(".episode-item")) {
-        list.innerHTML = `<div class="empty-state"><div class="empty-state-icon">${svg('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', 'style="width:40px;height:40px;display:block;margin:0 auto;color:var(--text-3)"')}</div><div class="empty-state-title">${emptyTitle}</div></div>`;
-      }
-    }, 360);
-  }
+  const card = list.closest(".card") || list;
+  const emptyHtml = `<div class="empty-state"><div class="empty-state-icon">${svg('<path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>', 'style="width:40px;height:40px;display:block;margin:0 auto;color:var(--text-3)"')}</div><div class="empty-state-title">${emptyTitle}</div></div>`;
+  card.style.transition = "opacity 0.18s ease";
+  card.style.opacity = "0";
+  setTimeout(() => {
+    list.innerHTML = emptyHtml;
+    // Hide the action bar (buttons row above the episode list)
+    const bar = card.querySelector(":scope > div:first-child");
+    if (bar && bar !== list) bar.style.display = "none";
+    document.getElementById("dl-show-more-bar")?.remove();
+    card.style.transition = "opacity 0.15s ease";
+    card.style.opacity = "1";
+    setTimeout(() => { card.style.transition = ""; }, 170);
+  }, 200);
 }
 
 async function _doPollTick() {
@@ -604,7 +627,7 @@ async function _doPollTick() {
       // up-to-date when the user switches to it.
       _stopDLPoll();
       _refreshAvailableTab();
-      API.getEpisodes({ status: "downloaded", limit: 100 })
+      API.getEpisodes(_dlFetchParams())
         .then((eps) => { if (window._dlData) window._dlData.downloaded = eps; })
         .catch(() => {});
       return;
@@ -808,8 +831,23 @@ window.downloadFeedFromDL = async function (feedId, mode, btn) {
     const label = mode === "unplayed" ? "unplayed episode" : "episode";
     Toast.info(`Queued ${r.queued} ${label}${r.queued !== 1 ? "s" : ""} for download`);
     updateStatus();
+    // Animate the row away and patch badge/subtitle in-place from cache — no full re-render.
     animateRemove(btn.closest(".episode-item"));
-    setTimeout(() => _refreshAvailableTab(), 350);
+    if (window._dlData?.available) {
+      window._dlData.available = window._dlData.available.filter((f) => f.id !== feedId);
+      const totalAvail = window._dlData.available.reduce((s, f) => s + f.available_count, 0);
+      const sub = document.getElementById("dl-subtitle");
+      if (sub) {
+        const inProg = (window._dlData.status?.active_downloads ?? 0) + (window._dlData.status?.download_queue_size ?? 0);
+        sub.textContent = `${totalAvail} available · ${inProg} in progress`;
+      }
+      const availBtn = document.querySelector('.tab-btn[data-tab="available"]');
+      if (availBtn) {
+        availBtn.innerHTML = totalAvail > 0
+          ? `Available <span class="badge badge-primary" style="margin-left:4px">${totalAvail}</span>`
+          : "Available";
+      }
+    }
   } catch (e) {
     btn.disabled = false;
     Toast.error(e.message);
