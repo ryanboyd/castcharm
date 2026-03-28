@@ -496,6 +496,46 @@ img { display: block; }
   cursor: default;
 }
 
+.feed-card-activity {
+  display: flex;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.feed-card-pip {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--primary);
+  cursor: pointer;
+}
+
+.feed-card-pip:hover {
+  background: var(--primary-light);
+}
+
+.feed-card-pip.pip-downloading svg {
+  animation: pip-dl 1.4s ease-in-out infinite;
+}
+
+.feed-card-pip.pip-syncing svg {
+  animation: pip-spin 1.6s linear infinite;
+}
+
+@keyframes pip-dl {
+  0%, 100% { transform: translateY(-1px); opacity: 0.7; }
+  50%       { transform: translateY(1px);  opacity: 1; }
+}
+
+@keyframes pip-spin {
+  to { transform: rotate(360deg); }
+}
+
 .badge {
   display: inline-flex;
   align-items: center;

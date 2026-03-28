@@ -121,9 +121,6 @@ def scan_orphan_folders(db) -> int:
 
     if created:
         log.info("Startup scan: created %d new feed(s) from existing folders", created)
-    else:
-        log.debug("Startup scan: no orphan folders found in %s", base_dir)
-
     return created
 
 

@@ -209,26 +209,26 @@ function _flipCardsOut(cb) {
   const cards = [...document.querySelectorAll("#stats-overview .card, #stats-overview .stat-card")];
   if (!cards.length) { cb(); return; }
   cards.forEach(el => {
-    el.style.transition = "transform 0.13s ease, opacity 0.13s ease";
+    el.style.transition = "transform 0.2s ease, opacity 0.2s ease";
     el.style.transform = "perspective(700px) rotateY(90deg)";
     el.style.opacity = "0";
   });
-  setTimeout(cb, 140);
+  setTimeout(cb, 210);
 }
 
 // Flip all .card/.stat-card elements in (call after innerHTML is set).
 function _flipCardsIn() {
   const cards = [...document.querySelectorAll("#stats-overview .card, #stats-overview .stat-card")];
   cards.forEach((el, i) => {
-    const delay = i * 12;
+    const delay = i * 18;
     el.style.transition = "none";
     el.style.transform = "perspective(700px) rotateY(-90deg)";
     el.style.opacity = "0";
     void el.offsetHeight;
-    el.style.transition = `transform 0.18s ease ${delay}ms, opacity 0.16s ease ${delay}ms`;
+    el.style.transition = `transform 0.26s ease ${delay}ms, opacity 0.22s ease ${delay}ms`;
     el.style.transform = "";
     el.style.opacity = "";
-    setTimeout(() => { el.style.transition = ""; }, 200 + delay);
+    setTimeout(() => { el.style.transition = ""; }, 300 + delay);
   });
 }
 

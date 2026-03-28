@@ -31,7 +31,7 @@ def read_audio_duration(file_path: str) -> Optional[str]:
         s = total % 60
         return f"{h}:{m:02d}:{s:02d}" if h else f"{m}:{s:02d}"
     except Exception as e:
-        log.debug("Could not read duration from %s: %s", file_path, e)
+        log.warning("Could not read duration from %s: %s", file_path, e)
         return None
 
 
@@ -92,8 +92,7 @@ def write_id3_tags(
         _write_ogg_tags(file_path, mapping, episode_data, feed_data)
     elif ext == ".flac":
         _write_flac_tags(file_path, mapping, episode_data, feed_data)
-    else:
-        log.debug("ID3 tagging not supported for extension %s", ext)
+
 
 
 # ---------------------------------------------------------------------------
@@ -299,7 +298,7 @@ def extract_embedded_cover(file_path: str, dest_path: str) -> bool:
                     f.write(audio.pictures[0].data)
                 return True
     except Exception as e:
-        log.debug("Could not extract embedded cover from %s: %s", file_path, e)
+        log.warning("Could not extract embedded cover from %s: %s", file_path, e)
     return False
 
 
@@ -327,8 +326,6 @@ def write_id3_tags_direct(file_path: str, tags: dict[str, str]) -> None:
         _write_ogg_tags(file_path, mapping, episode_data, {})
     elif ext == ".flac":
         _write_flac_tags(file_path, mapping, episode_data, {})
-    else:
-        log.debug("ID3 tagging not supported for extension %s", ext)
 
 
 def build_episode_data(episode) -> dict:

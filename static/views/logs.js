@@ -3,7 +3,7 @@
 // ============================================================
 // Logs view
 // ============================================================
-let _logsMinLevel = "INFO";
+let _logsMinLevel = "WARNING";
 let _logsPaused   = false;
 let _logsRawMode  = false;
 let _logsLastEntries = [];  // cached for download without extra fetch
@@ -31,7 +31,7 @@ async function viewLogs() {
       </div>
 
       <div class="log-toolbar">
-        ${["DEBUG","INFO","WARNING","ERROR"].map((l) =>
+        ${["INFO","WARNING","ERROR"].map((l) =>
           `<button class="log-level-btn ${l === _logsMinLevel ? "active" : ""}"
                    data-level="${l}" id="log-lvl-${l}">${l}</button>`
         ).join("")}
@@ -49,7 +49,7 @@ async function viewLogs() {
       </div>
     </div>`;
 
-  for (const level of ["DEBUG","INFO","WARNING","ERROR"]) {
+  for (const level of ["INFO","WARNING","ERROR"]) {
     document.getElementById(`log-lvl-${level}`).addEventListener("click", () => {
       _logsMinLevel = level;
       document.querySelectorAll(".log-level-btn").forEach((b) => {
@@ -87,7 +87,7 @@ async function viewLogs() {
 
 async function _fetchAndRender(scrollBottom = false) {
   try {
-    const level = _logsMinLevel === "DEBUG" ? null : _logsMinLevel;
+    const level = _logsMinLevel;
     const entries = await API.getLogs(1000, level);
     _logsLastEntries = entries;
     _renderEntries(entries);
@@ -128,8 +128,8 @@ function _logRow(e) {
   return `<div class="log-entry ${cls}">
     <span class="log-ts">${e.ts.replace("T", " ")}</span>
     <span class="log-level-tag">${e.level}</span>
-    <span class="log-logger" title="${_esc(e.logger)}">${_esc(shortLogger)}</span>
-    <span class="log-msg">${_esc(e.message)}</span>
+    <span class="log-logger" title="${escHTML(e.logger)}">${escHTML(shortLogger)}</span>
+    <span class="log-msg">${escHTML(e.message)}</span>
   </div>`;
 }
 
@@ -148,6 +148,3 @@ function _downloadLogs() {
   URL.revokeObjectURL(url);
 }
 
-function _esc(s) {
-  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}

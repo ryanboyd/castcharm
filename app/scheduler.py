@@ -136,7 +136,7 @@ def schedule_feed(feed_id: int):
         replace_existing=True,
         misfire_grace_time=300,
     )
-    log.debug("Scheduled feed %d every %d minutes", feed_id, interval_minutes)
+
 
 
 def reschedule_feed(feed_id: int):
@@ -148,7 +148,7 @@ def remove_feed_job(feed_id: int):
     job_id = _job_id(feed_id)
     if _scheduler.get_job(job_id):
         _scheduler.remove_job(job_id)
-        log.debug("Removed scheduler job for feed %d", feed_id)
+
 
 
 def _schedule_all_feeds():

@@ -4,6 +4,7 @@ import os
 from sqlalchemy.orm import Session
 
 from app.models import Feed, Episode, GlobalSettings
+from app.utils import get_group_feed_ids
 
 log = logging.getLogger(__name__)
 
@@ -59,8 +60,7 @@ def run_keep_latest_cleanup(feed_id: int, db: Session) -> list[int]:
     if not limit or limit <= 0:
         return []
 
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
 
     all_eps = _candidates(all_ids, db)
 
@@ -111,8 +111,7 @@ def preview_keep_latest_cleanup(feed_id: int, db: Session) -> dict:
     if not limit or limit <= 0:
         return {"limit": None, "keep_unplayed": keep_unplayed, "would_delete": 0, "episode_ids": []}
 
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
 
     all_eps = _candidates(all_ids, db)
 

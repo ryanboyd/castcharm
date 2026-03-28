@@ -212,6 +212,8 @@ class StatusOut(BaseModel):
     next_sync_at: Optional[datetime] = None
     importing_count: int = 0   # active file-import jobs
     scanning: bool = False     # startup folder scan in progress
+    downloading_feed_ids: list[int] = []  # primary feed IDs with queued/active downloads
+    syncing_feed_ids: list[int] = []      # feed IDs currently syncing (active + pending)
 
 
 # ---------------------------------------------------------------------------

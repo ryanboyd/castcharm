@@ -121,12 +121,43 @@ async function _patchFeedCounts() {
   } catch (_) {}
 }
 
+function _setCardPip(card, dl, sy) {
+  let pip = card.querySelector(".feed-card-activity");
+  if (!dl && !sy) { pip?.remove(); return; }
+  if (!pip) {
+    pip = document.createElement("div");
+    pip.className = "feed-card-activity";
+    pip.addEventListener("click", (e) => {
+      e.stopPropagation();
+      window._pendingDLTab = "inprogress";
+      Router.navigate("/downloads");
+    });
+    card.querySelector(".feed-card-meta")?.insertAdjacentElement("afterend", pip) ?? card.appendChild(pip);
+  }
+  const dlHTML = dl ? `<div class="feed-card-pip pip-downloading" title="Downloading">${svg('<path d="M12 3v13"/><polyline points="8 12 12 16 16 12"/><path d="M20 21H4"/>', 'width="12" height="12"')}</div>` : "";
+  const syHTML = sy ? `<div class="feed-card-pip pip-syncing" title="Syncing">${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>', 'width="12" height="12"')}</div>` : "";
+  const next = dlHTML + syHTML;
+  if (pip.innerHTML !== next) pip.innerHTML = next;
+}
+
+function _updateFeedActivityPips(s) {
+  const grid = document.getElementById("feeds-grid");
+  if (!grid) return;
+  const dlIds   = new Set(s.downloading_feed_ids || []);
+  const syncIds = new Set(s.syncing_feed_ids || []);
+  for (const card of grid.querySelectorAll(".feed-card[data-id]")) {
+    const id = Number(card.dataset.id);
+    _setCardPip(card, dlIds.has(id), syncIds.has(id));
+  }
+}
+
 async function viewFeeds() {
   // Refresh feed cards automatically when background activity finishes.
   window._onSyncIdle    = _refreshFeedsGrid;
   window._onDownloadIdle = _refreshFeedsGrid;
-  // Patch counts on every poll tick while downloads are in progress.
+  // Update per-card activity pips and patch counts on every poll tick.
   window._onStatusPoll  = (s) => {
+    _updateFeedActivityPips(s);
     if ((s.active_downloads ?? 0) > 0 || (s.download_queue_size ?? 0) > 0) _patchFeedCounts();
   };
 
@@ -215,6 +246,8 @@ async function viewFeeds() {
       try {
         await API.syncFeed(id);
         Toast.success("Sync started");
+        const card = document.querySelector(`#feeds-grid .feed-card[data-id="${id}"]`);
+        if (card) _setCardPip(card, false, true);
         updateStatus();
       } catch (err) {
         Toast.error(err.message);
@@ -276,21 +309,7 @@ async function viewFeeds() {
     }
   });
 
-  document.getElementById("btn-sync-all")?.addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = "Syncing…";
-    try {
-      await API.syncAllFeeds();
-      updateStatus();
-      Toast.success("Sync started for all active feeds");
-    } catch (err) {
-      Toast.error(err.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All Feeds`;
-    }
-  });
+  wireSyncAllBtn("#btn-sync-all");
 }
 
 function feedCard(f) {

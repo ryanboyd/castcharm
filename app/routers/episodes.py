@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_db
 from app.models import Episode, Feed
+from app.utils import get_group_feed_ids
 from app.schemas import EpisodeOut
 
 log = logging.getLogger(__name__)
@@ -27,11 +28,7 @@ def recalc_seq_numbers(primary_feed_id: int, db: Session) -> None:
     primary = db.query(Feed).filter(Feed.id == primary_feed_id).first()
     start = (primary.episode_number_start or 1) if primary else 1
 
-    sub_ids = [
-        row[0]
-        for row in db.query(Feed.id).filter(Feed.primary_feed_id == primary_feed_id).all()
-    ]
-    all_feed_ids = [primary_feed_id] + sub_ids
+    all_feed_ids = get_group_feed_ids(db, primary_feed_id)
 
     # Fetch all non-hidden episodes ordered oldest-first
     visible = (
