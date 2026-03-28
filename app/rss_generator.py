@@ -1,6 +1,5 @@
 """Generate a clean RSS/XML feed from all non-hidden episodes in a podcast group."""
 import os
-import re
 import xml.etree.ElementTree as ET
 import xml.dom.minidom
 from datetime import datetime, timezone
@@ -10,13 +9,9 @@ from typing import Optional
 from sqlalchemy.orm import Session
 
 from app.models import Feed, Episode
+from app.utils import sanitize_filename, get_group_feed_ids
 
-
-def _sanitize_filename(name: str) -> str:
-    name = name.strip()
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name)
-    name = re.sub(r"\s+", " ", name)
-    return name[:200]
+_sanitize_filename = sanitize_filename  # alias for modules that import from here
 
 
 def _rfc2822(dt: Optional[datetime]) -> Optional[str]:
@@ -41,15 +36,11 @@ def build_clean_feed_xml(primary_feed_id: int, db: Session) -> str:
     if primary is None:
         raise ValueError(f"Feed {primary_feed_id} not found")
 
-    sub_ids = [
-        row[0]
-        for row in db.query(Feed.id).filter(Feed.primary_feed_id == primary_feed_id).all()
-    ]
-    all_feed_ids = [primary_feed_id] + sub_ids
+    all_feed_ids = get_group_feed_ids(db, primary_feed_id)
 
     # Build a feed map so we can look up each episode's source feed for image fallback
     feed_map = {primary_feed_id: primary}
-    for fid in sub_ids:
+    for fid in all_feed_ids[1:]:
         sf = db.query(Feed).filter(Feed.id == fid).first()
         if sf:
             feed_map[fid] = sf
@@ -160,15 +151,3 @@ def write_feed_xml(primary_feed_id: int, db: Session, folder: str) -> str:
     with open(path, "w", encoding="utf-8") as f:
         f.write(xml_content)
     return path
-
-
-# Legacy entry point kept for compatibility
-def generate_clean_feed(primary_feed_id: int, db: Session, output_dir: str) -> str:
-    xml_content = build_clean_feed_xml(primary_feed_id, db)
-    primary = db.query(Feed).filter(Feed.id == primary_feed_id).first()
-    safe_title = _sanitize_filename(primary.title or f"feed_{primary_feed_id}") if primary else f"feed_{primary_feed_id}"
-    os.makedirs(output_dir, exist_ok=True)
-    output_path = os.path.join(output_dir, f"{safe_title}.xml")
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write(xml_content)
-    return output_path

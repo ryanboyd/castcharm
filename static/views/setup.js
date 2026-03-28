@@ -109,7 +109,7 @@ function _stepLogin() {
       <label class="form-label">Username</label>
       <input class="form-control" id="wiz-username" type="text"
              autocomplete="username"
-             value="${_htmlesc(_setupState.username)}" />
+             value="${escHTML(_setupState.username)}" />
     </div>
     <div class="form-group">
       <label class="form-label">Password</label>
@@ -167,7 +167,7 @@ function _stepStorage() {
       <label class="form-label">Path</label>
       <div style="display:flex;gap:8px">
         <input class="form-control" id="wiz-dl-path" type="text"
-               value="${_htmlesc(_setupState.downloadPath)}"
+               value="${escHTML(_setupState.downloadPath)}"
                style="font-family:monospace;flex:1"
                oninput="_setupState.downloadPath=this.value" />
         <button class="btn btn-ghost" type="button"
@@ -189,22 +189,22 @@ window._loadDirBrowser = async function(path) {
     const rows = [];
     if (data.parent !== null) {
       rows.push(`<div class="dir-entry dir-up"
-        onclick="var p='${_jsesc(data.parent)}';document.getElementById('wiz-dl-path').value=p;_setupState.downloadPath=p;_loadDirBrowser(p)">
+        onclick="var p='${escJS(data.parent)}';document.getElementById('wiz-dl-path').value=p;_setupState.downloadPath=p;_loadDirBrowser(p)">
         <span class="dir-icon">↑</span><span>..</span>
       </div>`);
     }
     for (const entry of data.entries) {
       rows.push(`<div class="dir-entry"
-        onclick="var p='${_jsesc(entry.path)}';document.getElementById('wiz-dl-path').value=p;_setupState.downloadPath=p;_loadDirBrowser(p)">
-        <span class="dir-icon">📁</span><span>${_htmlesc(entry.name)}</span>
+        onclick="var p='${escJS(entry.path)}';document.getElementById('wiz-dl-path').value=p;_setupState.downloadPath=p;_loadDirBrowser(p)">
+        <span class="dir-icon">📁</span><span>${escHTML(entry.name)}</span>
       </div>`);
     }
     if (!data.entries.length && data.parent === null) {
       rows.push(`<div style="padding:8px 12px;color:var(--text-3);font-size:12px">No subdirectories</div>`);
     }
-    el.innerHTML = `<div class="dir-browser-path">${_htmlesc(data.path)}</div>${rows.join("")}`;
+    el.innerHTML = `<div class="dir-browser-path">${escHTML(data.path)}</div>${rows.join("")}`;
   } catch (err) {
-    el.innerHTML = `<div style="padding:8px 12px;color:var(--error);font-size:12px">${_htmlesc(err.message)}</div>`;
+    el.innerHTML = `<div style="padding:8px 12px;color:var(--error);font-size:12px">${escHTML(err.message)}</div>`;
   }
 };
 
@@ -339,18 +339,4 @@ function _wizErr(msg) {
   if (!el) return;
   el.textContent = msg;   // textContent: never interpreted as HTML
   el.style.display = "block";
-}
-
-// ── Escape helpers ─────────────────────────────────────────────────────────
-
-// For injecting values into HTML attributes / text content
-function _htmlesc(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
-}
-
-// For injecting values into single-quoted JS strings inside onclick=""
-function _jsesc(str) {
-  return String(str ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }

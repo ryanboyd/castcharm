@@ -12,6 +12,7 @@ from typing import Optional
 import httpx
 
 from app.models import Episode, Feed, GlobalSettings
+from app.utils import sanitize_filename, get_group_feed_ids
 from sqlalchemy.orm import Session, joinedload
 
 log = logging.getLogger(__name__)
@@ -196,12 +197,7 @@ def _effective(feed_val, global_val, default=None):
     return default
 
 
-def _sanitize_filename(name: str) -> str:
-    """Remove characters that are unsafe in filenames."""
-    name = name.strip()
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", name)
-    name = re.sub(r"\s+", " ", name)
-    return name[:200]  # truncate very long names
+_sanitize_filename = sanitize_filename  # alias for modules that import from here
 
 
 def _guess_extension(content_type: Optional[str], url: str) -> str:
@@ -242,12 +238,12 @@ def get_podcast_folder(feed: Feed, db: Session) -> str:
     base_dir = _effective(feed.download_path, gs.download_path, "/downloads")
     if feed.primary_feed_id:
         primary = db.query(Feed).filter(Feed.id == feed.primary_feed_id).first()
-        folder_name = _sanitize_filename(
+        folder_name = sanitize_filename(
             (primary.podcast_group or primary.title) if primary
             else (feed.podcast_group or feed.title or "Unknown Podcast")
         )
     else:
-        folder_name = _sanitize_filename(feed.podcast_group or feed.title or "Unknown Podcast")
+        folder_name = sanitize_filename(feed.podcast_group or feed.title or "Unknown Podcast")
     return os.path.join(base_dir, folder_name)
 
 
@@ -264,7 +260,7 @@ def _build_file_path(
 ) -> str:
     """Construct the target file path for an episode download."""
     import math
-    episode_title = _sanitize_filename(episode.title or "Untitled Episode")
+    episode_title = sanitize_filename(episode.title or "Untitled Episode")
 
     # Build filename: YYYY-MM-DD - ### - title  (each present part joined by " - ")
     parts = []
@@ -501,20 +497,16 @@ def download_episode(episode_id: int, db: Session) -> None:
     # Supplementary feeds share the primary feed's folder
     if feed.primary_feed_id:
         primary = db.query(Feed).filter(Feed.id == feed.primary_feed_id).first()
-        folder_name = _sanitize_filename(
+        folder_name = sanitize_filename(
             (primary.podcast_group or primary.title) if primary else (feed.podcast_group or feed.title or "Unknown Podcast")
         )
     else:
         primary = feed
-        folder_name = _sanitize_filename(feed.podcast_group or feed.title or "Unknown Podcast")
+        folder_name = sanitize_filename(feed.podcast_group or feed.title or "Unknown Podcast")
 
     # Count total non-hidden episodes in the podcast group for zero-padding
     primary_id = primary.id if primary else feed.id
-    sub_ids = [
-        row[0]
-        for row in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()
-    ]
-    all_ids = [primary_id] + sub_ids
+    all_ids = get_group_feed_ids(db, primary_id)
     from sqlalchemy import func as _func
     total_episodes = (
         db.query(_func.count(Episode.id))

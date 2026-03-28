@@ -53,6 +53,7 @@ window.toggleEpPlayed = async function (epId) {
     if (!ep.played) { await API.updateProgress(epId, 0); ep.play_position_seconds = 0; }
     if (typeof updateEpisodeRow === "function") updateEpisodeRow(ep);
     Toast.info(ep.played ? "Marked as played" : "Marked as unplayed");
+    updateStatus();
   } catch (e) { Toast.error(e.message); }
 };
 
@@ -770,6 +771,7 @@ async function viewFeedDetail(feedId) {
     try {
       const r = await API.markAllPlayed(id);
       Toast.success(`${r.updated} episode${r.updated !== 1 ? "s" : ""} marked as played`);
+      updateStatus();
       document.querySelectorAll("#episode-list .episode-item").forEach((row) => {
         if (row.dataset.played === "1") return;
         row.dataset.played = "1";
@@ -1186,6 +1188,7 @@ async function viewFeedDetail(feedId) {
       };
       Toast.success(actionMessages[action] || `${n} ${ep} updated`);
       await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]);
+      updateStatus();
       _syncCheckboxes();
     } catch (e) { Toast.error(e.message); }
   };
@@ -1512,6 +1515,7 @@ window.hideEpisode = async function (id) {
     _syncHiddenBadge(+1);
     _syncDownloadButtons(ep, +1);
     Toast.info("Episode hidden");
+    updateStatus();
   } catch (e) { Toast.error(e.message); }
 };
 
@@ -1522,6 +1526,7 @@ window.unhideEpisode = async function (id) {
     _syncHiddenBadge(-1);
     _syncDownloadButtons(ep, -1);
     Toast.info("Episode unhidden");
+    updateStatus();
   } catch (e) { Toast.error(e.message); }
 };
 

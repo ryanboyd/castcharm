@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import Optional
 
 from app.models import Episode, Feed
+from app.utils import get_group_feed_ids
 from sqlalchemy.orm import Session
 
 log = logging.getLogger(__name__)
@@ -261,10 +262,10 @@ def _build_target_path(ep: Episode, feed: Feed, src_path: str, db: Session,
     folder_name = _sanitize_filename(folder_raw)
 
     primary_id = feed.primary_feed_id or feed.id
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
+    grp_ids = get_group_feed_ids(db, primary_id)
     total_eps = (
         db.query(_func.count(Episode.id))
-        .filter(Episode.feed_id.in_([primary_id] + sub_ids), Episode.hidden.is_(False))
+        .filter(Episode.feed_id.in_(grp_ids), Episode.hidden.is_(False))
         .scalar() or 0
     )
 
@@ -294,8 +295,7 @@ def _interpolate_missing_dates(feed_id: int, db: Session) -> int:
         return 0
 
     primary_id = feed.primary_feed_id or feed.id
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
-    all_ids = [primary_id] + sub_ids
+    all_ids = get_group_feed_ids(db, primary_id)
 
     episodes = (
         db.query(Episode)
@@ -472,8 +472,7 @@ def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
 
     # All feed episodes (including supplementary feeds)
     primary_id = feed.primary_feed_id or feed.id
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
-    all_feed_ids = [primary_id] + sub_ids
+    all_feed_ids = get_group_feed_ids(db, primary_id)
 
     existing = (
         db.query(Episode)
@@ -619,8 +618,7 @@ def import_staged(feed_id: int, items: list, db: Session) -> dict:
         return _import_jobs[feed_id]
 
     primary_id = feed.primary_feed_id or feed.id
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
-    all_feed_ids = [primary_id] + sub_ids
+    all_feed_ids = get_group_feed_ids(db, primary_id)
 
     matched = created = errors = 0
 

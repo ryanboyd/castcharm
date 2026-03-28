@@ -530,6 +530,7 @@ function _wireInProgressActions() {
       // Clear badges and subtitle
       _setTabBadge("badge-inprogress", 0);
       _setNavBadge(0);
+      updateStatus();
       const sub = document.getElementById("dl-subtitle");
       if (sub) {
         const totalAvail = (window._dlData?.available || []).reduce((s, f) => s + f.available_count, 0);
@@ -551,6 +552,7 @@ function _wireFailedActions() {
       _clearTabRows("All queued for retry");
       if (window._dlData) window._dlData.failed = [];
       _setTabBadge("badge-failed", 0, "badge-error");
+      updateStatus();
     } catch (e) { Toast.error(e.message); }
   });
   document.getElementById("btn-dismiss-all-tab")?.addEventListener("click", async () => {
@@ -560,6 +562,7 @@ function _wireFailedActions() {
       _clearTabRows("Nothing here yet");
       if (window._dlData) window._dlData.failed = [];
       _setTabBadge("badge-failed", 0, "badge-error");
+      updateStatus();
     } catch (e) { Toast.error(e.message); }
   });
 }
@@ -875,6 +878,7 @@ window.queueEpisodeDL = async function (id) {
 window.cancelEpisodeDL = async function (id) {
   try {
     await API.cancelEpisode(id);
+    updateStatus();
     animateRemove(document.getElementById(`dl-ep-${id}`));
   } catch (e) { Toast.error(e.message); }
 };
@@ -886,9 +890,8 @@ window.dismissEpisodeDL = async function (id) {
       window._dlData.failed = (window._dlData.failed || []).filter((e) => e.id !== id);
     }
     animateRemove(document.getElementById(`dl-ep-${id}`), () => {
-      // Re-sync badge from the already-updated _dlData array once the row has gone,
-      // then show the empty state if this was the last item.
       _setTabBadge("badge-failed", (window._dlData?.failed || []).length, "badge-error");
+      updateStatus();
       _checkTabListEmpty();
     });
   } catch (e) { Toast.error(e.message); }
@@ -899,6 +902,7 @@ window.deleteEpisodeFileDL = async function (id) {
   try {
     await API.deleteEpisodeFile(id);
     Toast.success("File deleted");
+    updateStatus();
     if (window._dlData) {
       window._dlData.downloaded = (window._dlData.downloaded || []).filter((e) => e.id !== id);
     }

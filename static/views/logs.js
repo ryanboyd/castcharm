@@ -128,8 +128,8 @@ function _logRow(e) {
   return `<div class="log-entry ${cls}">
     <span class="log-ts">${e.ts.replace("T", " ")}</span>
     <span class="log-level-tag">${e.level}</span>
-    <span class="log-logger" title="${_esc(e.logger)}">${_esc(shortLogger)}</span>
-    <span class="log-msg">${_esc(e.message)}</span>
+    <span class="log-logger" title="${escHTML(e.logger)}">${escHTML(shortLogger)}</span>
+    <span class="log-msg">${escHTML(e.message)}</span>
   </div>`;
 }
 
@@ -148,6 +148,3 @@ function _downloadLogs() {
   URL.revokeObjectURL(url);
 }
 
-function _esc(s) {
-  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}

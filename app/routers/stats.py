@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Feed, Episode
+from app.utils import get_group_feed_ids
 
 router = APIRouter(prefix="/api/stats", tags=["stats"])
 
@@ -338,8 +339,7 @@ def get_global_stats(db: Session = Depends(get_db)):
     # Map each primary feed to all its feed IDs (primary + supplementary)
     sub_map: dict[int, list[int]] = {}
     for f in feeds:
-        subs = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == f.id).all()]
-        sub_map[f.id] = [f.id] + subs
+        sub_map[f.id] = get_group_feed_ids(db, f.id)
 
     all_feed_ids = [fid for ids in sub_map.values() for fid in ids]
 
@@ -459,8 +459,7 @@ def get_feed_stats(feed_id: int, db: Session = Depends(get_db)):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    subs = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + subs
+    all_ids = get_group_feed_ids(db, feed_id)
 
     episodes_by_year = _year_buckets(all_ids, db)
     episodes_by_dow  = _dow_buckets(all_ids, db)

@@ -216,3 +216,34 @@ function animateEnter(el) {
     el.style.overflow = "";
   }, 340);
 }
+
+// ── Shared escape helpers ───────────────────────────────────────────────────
+
+function escHTML(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+function escJS(s) {
+  return String(s ?? "").replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+}
+
+// ── Shared "Sync All Feeds" button wiring ───────────────────────────────────
+
+function wireSyncAllBtn(selector) {
+  document.querySelector(selector)?.addEventListener("click", async (e) => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    btn.textContent = "Syncing\u2026";
+    try {
+      await API.syncAllFeeds();
+      updateStatus();
+      Toast.success("Sync started for all active feeds");
+    } catch (err) {
+      Toast.error(err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All Feeds`;
+    }
+  });
+}

@@ -276,21 +276,7 @@ async function viewFeeds() {
     }
   });
 
-  document.getElementById("btn-sync-all")?.addEventListener("click", async (e) => {
-    const btn = e.currentTarget;
-    btn.disabled = true;
-    btn.textContent = "Syncing…";
-    try {
-      await API.syncAllFeeds();
-      updateStatus();
-      Toast.success("Sync started for all active feeds");
-    } catch (err) {
-      Toast.error(err.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All Feeds`;
-    }
-  });
+  wireSyncAllBtn("#btn-sync-all");
 }
 
 function feedCard(f) {

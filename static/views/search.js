@@ -71,7 +71,7 @@ async function _doSearch(q) {
   try {
     const eps = await API.getEpisodes({ search: q, limit: 40 });
     if (!eps.length) {
-      container.innerHTML = `<div class="search-empty">No results for <strong>${_searchEsc(q)}</strong></div>`;
+      container.innerHTML = `<div class="search-empty">No results for <strong>${escHTML(q)}</strong></div>`;
       return;
     }
     container.innerHTML = eps.map((ep) => {
@@ -79,9 +79,9 @@ async function _doSearch(q) {
       const date      = ep.published_at ? new Date(ep.published_at).toLocaleDateString() : "";
       return `<div class="search-result" tabindex="-1"
                    onclick="hideSearch();window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
-        <div class="search-result-title">${_searchEsc(ep.title || "Untitled")}</div>
+        <div class="search-result-title">${escHTML(ep.title || "Untitled")}</div>
         <div class="search-result-meta">
-          <span class="search-result-feed">${_searchEsc(feedTitle)}</span>
+          <span class="search-result-feed">${escHTML(feedTitle)}</span>
           ${date ? `<span class="search-result-date">${date}</span>` : ""}
           ${statusBadge(ep.status)}
         </div>
@@ -104,6 +104,3 @@ function _moveFocus(dir) {
   items[idx].scrollIntoView({ block: "nearest" });
 }
 
-function _searchEsc(s) {
-  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}

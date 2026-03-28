@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Feed, Episode, GlobalSettings
+from app.utils import get_group_feed_ids
 from app.schemas import (
     FeedCreate, FeedUpdate, FeedOut, EpisodeOut, RSSSourceInfo,
     ImportFilesRequest, ImportPreviewRequest, ImportStageRequest,
@@ -339,8 +340,7 @@ def delete_feed(feed_id: int, delete_files: bool = False, force: bool = False, d
 
     feed_label = feed.title or feed.url
     sub_feeds = db.query(Feed).filter(Feed.primary_feed_id == feed_id).all()
-    sub_ids = [s.id for s in sub_feeds]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
 
     # Resolve podcast folder before we touch the DB (needs the feed record)
     podcast_folder = None
@@ -406,12 +406,14 @@ def delete_feed(feed_id: int, delete_files: bool = False, force: bool = False, d
 @router.post("/refresh-all", status_code=204)
 def refresh_all_feeds(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
     """Kick off a background sync for every active feed."""
+    from app.activity import mark_sync_queued
     feed_ids = [
         row[0]
         for row in db.query(Feed.id).filter(Feed.active.is_(True), Feed.primary_feed_id.is_(None)).all()
     ]
     log.info("Sync all triggered: %d active feeds", len(feed_ids))
     for fid in feed_ids:
+        mark_sync_queued(fid)
         background_tasks.add_task(_bg_sync, fid)
 
 
@@ -421,6 +423,8 @@ def refresh_feed(feed_id: int, background_tasks: BackgroundTasks, db: Session = 
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
     log.info("Manual sync triggered: %s (id=%d)", feed.title or feed.url, feed_id)
+    from app.activity import mark_sync_queued
+    mark_sync_queued(feed_id)
     background_tasks.add_task(_bg_sync, feed_id)
     return _feed_out(feed, db)
 
@@ -439,11 +443,8 @@ def get_feed_episodes(
         raise HTTPException(status_code=404, detail="Feed not found")
 
     # Include episodes from supplementary feeds linked to this one
-    sub_ids = [
-        row[0]
-        for row in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()
-    ]
-    all_feed_ids = [feed_id] + sub_ids
+    all_feed_ids = get_group_feed_ids(db, feed_id)
+    sub_ids = all_feed_ids[1:]
 
     # Build a lookup so we can annotate each episode with its source feed info
     feed_map = {feed_id: feed}
@@ -511,8 +512,7 @@ def download_all_feed(feed_id: int, db: Session = Depends(get_db)):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
 
     episodes = (
         db.query(Episode)
@@ -545,8 +545,7 @@ def download_unplayed_feed(feed_id: int, db: Session = Depends(get_db)):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
 
     episodes = (
         db.query(Episode)
@@ -578,8 +577,7 @@ def download_unplayed_feed(feed_id: int, db: Session = Depends(get_db)):
 @router.get("/{feed_id}/queue-count")
 def feed_queue_count(feed_id: int, db: Session = Depends(get_db)):
     """Return count of queued+downloading episodes for the podcast group (primary + supplementary feeds)."""
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
     count = db.query(func.count(Episode.id)).filter(
         Episode.feed_id.in_(all_ids),
         Episode.status.in_(["queued", "downloading"]),
@@ -591,8 +589,7 @@ def feed_queue_count(feed_id: int, db: Session = Depends(get_db)):
 def cancel_feed_queued(feed_id: int, db: Session = Depends(get_db)):
     """Cancel all queued and downloading episodes for this podcast group, returning them to pending."""
     from app.downloader import request_cancel
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
     episodes = db.query(Episode).filter(
         Episode.feed_id.in_(all_ids),
         Episode.status.in_(["queued", "downloading"]),
@@ -614,8 +611,7 @@ def renumber_feed(feed_id: int, db: Session = Depends(get_db)):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
     primary_id = feed.primary_feed_id or feed.id
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
-    all_ids = [primary_id] + sub_ids
+    all_ids = get_group_feed_ids(db, primary_id)
     db.query(Episode).filter(
         Episode.feed_id.in_(all_ids),
         Episode.seq_number_locked.is_(True),
@@ -633,8 +629,7 @@ def mark_all_played(feed_id: int, db: Session = Depends(get_db)):
     feed = db.query(Feed).filter(Feed.id == feed_id).first()
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
     episodes = (
         db.query(Episode)
         .filter(Episode.feed_id.in_(all_ids), Episode.status == "downloaded", Episode.played.is_(False))
@@ -658,8 +653,7 @@ def apply_file_updates(feed_id: int, db: Session = Depends(get_db)):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
 
-    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == feed_id).all()]
-    all_ids = [feed_id] + sub_ids
+    all_ids = get_group_feed_ids(db, feed_id)
 
     pending = (
         db.query(Episode)
@@ -740,10 +734,10 @@ def _compute_new_filepath(ep: Episode, primary_feed: Feed, gs: GlobalSettings, d
     if date_prefix and ep.published_at:
         parts.append(ep.published_at.strftime("%Y-%m-%d"))
     if ep_num_prefix and ep.seq_number is not None:
-        sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_feed.id).all()]
+        grp_ids = get_group_feed_ids(db, primary_feed.id)
         total_eps = (
             db.query(func.count(Episode.id))
-            .filter(Episode.feed_id.in_([primary_feed.id] + sub_ids), Episode.hidden.is_(False))
+            .filter(Episode.feed_id.in_(grp_ids), Episode.hidden.is_(False))
             .scalar() or 1
         )
         pad = max(3, math.ceil(math.log10(total_eps + 1)))
@@ -1013,8 +1007,7 @@ def _bg_sync(feed_id: int):
         if was_initial and feed.download_all_on_first_sync:
             try:
                 primary_id_dl = feed.primary_feed_id or feed.id
-                sub_ids_dl = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id_dl).all()]
-                all_ids_dl = [primary_id_dl] + sub_ids_dl
+                all_ids_dl = get_group_feed_ids(db, primary_id_dl)
                 eps_to_queue = (
                     db.query(Episode)
                     .filter(
