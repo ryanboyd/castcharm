@@ -52,16 +52,6 @@ All configuration is done via environment variables (or a `.env` file next to `d
 
 The `DATABASE_URL`, `DEFAULT_DOWNLOAD_PATH`, and `CLEAN_RSS_PATH` variables inside the container are set automatically by `docker-compose.yml` and don't normally need to be changed.
 
-### Pointing at an existing media library
-
-If you already have podcast files on a NAS or local disk:
-
-```env
-DOWNLOAD_PATH=/mnt/nas/podcasts
-```
-
-CastCharm will scan that directory on startup and can import existing folders as feeds.
-
 ### Running behind a reverse proxy
 
 The default `CMD` includes `--proxy-headers` so `X-Forwarded-*` headers from nginx/Caddy/Traefik are trusted. No extra configuration needed.
