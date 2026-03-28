@@ -953,10 +953,9 @@ def _bg_sync(feed_id: int):
                     ep.status = "queued"
                     ep.error_message = None
                 db.commit()
+                from app.downloader import enqueue_download
                 for ep in eps_to_queue:
-                    from app.downloader import download_episode
-                    import threading
-                    threading.Thread(target=download_episode, args=(ep.id,), daemon=True).start()
+                    enqueue_download(ep.id)
             except Exception as e:
                 log.warning("download_all_on_first_sync failed: %s", e)
 

@@ -86,15 +86,49 @@ async function _refreshFeedsGrid() {
   const feeds = await API.getFeeds();
   _feedsData = feeds;
   const grid = document.getElementById("feeds-grid");
-  if (!grid) { viewFeeds(); return; }
+  if (!grid) {
+    // No grid means we're either on the empty state or have navigated away.
+    // Only re-render if we're still on the feeds route — a stale in-flight call
+    // must not overwrite another page's content.
+    if ((window.location.hash || "#/") === "#/feeds") await viewFeeds();
+    return;
+  }
   grid.innerHTML = _sortFeeds(feeds).map(feedCard).join("");
   const sub = document.querySelector(".page-subtitle");
   if (sub) sub.textContent = `${feeds.length} podcast${feeds.length !== 1 ? "s" : ""}`;
 }
 
+function _feedCardMeta(f) {
+  return `
+    <span class="badge badge-default">${f.episode_count} eps</span>
+    <span class="badge badge-success">${f.downloaded_count} downloaded</span>
+    <span class="badge ${f.unplayed_count > 0 ? "badge-primary" : "badge-default"}">${f.unplayed_count} unplayed</span>
+    ${!f.active ? `<span class="badge badge-default">Paused</span>` : ""}
+    ${f.last_error ? `<span class="badge badge-error" title="${f.last_error}">Error</span>` : ""}`;
+}
+
+// Patch just the badge counts on each card without re-rendering or re-sorting.
+async function _patchFeedCounts() {
+  const grid = document.getElementById("feeds-grid");
+  if (!grid) return;
+  try {
+    const feeds = await API.getFeeds();
+    _feedsData = feeds;
+    for (const f of feeds) {
+      const meta = grid.querySelector(`.feed-card[data-id="${f.id}"] .feed-card-meta`);
+      if (meta) meta.innerHTML = _feedCardMeta(f);
+    }
+  } catch (_) {}
+}
+
 async function viewFeeds() {
-  // Refresh feed cards automatically when any background sync finishes.
-  window._onSyncIdle = _refreshFeedsGrid;
+  // Refresh feed cards automatically when background activity finishes.
+  window._onSyncIdle    = _refreshFeedsGrid;
+  window._onDownloadIdle = _refreshFeedsGrid;
+  // Patch counts on every poll tick while downloads are in progress.
+  window._onStatusPoll  = (s) => {
+    if ((s.active_downloads ?? 0) > 0 || (s.download_queue_size ?? 0) > 0) _patchFeedCounts();
+  };
 
   const feeds = await API.getFeeds();
   _feedsData = feeds;
@@ -275,13 +309,7 @@ function feedCard(f) {
     <div class="feed-card-art">${artImg(f.custom_image_url || f.image_url, "", "", !f.active)}</div>
     <div class="feed-card-title">${f.title || f.url}</div>
     <div class="feed-card-author">${f.author || "Unknown author"}</div>
-    <div class="feed-card-meta">
-      <span class="badge badge-default">${f.episode_count} eps</span>
-      <span class="badge badge-success">${f.downloaded_count} downloaded</span>
-      <span class="badge ${f.unplayed_count > 0 ? "badge-primary" : "badge-default"}">${f.unplayed_count} unplayed</span>
-      ${!f.active ? `<span class="badge badge-default">Paused</span>` : ""}
-      ${f.last_error ? `<span class="badge badge-error" title="${f.last_error}">Error</span>` : ""}
-    </div>
+    <div class="feed-card-meta">${_feedCardMeta(f)}</div>
     <div class="feed-card-overlay">
       <button class="feed-card-action" data-action="sync" data-id="${f.id}" title="Sync this feed">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16">

@@ -218,6 +218,30 @@ function _syncHiddenBadge(delta) {
   }
 }
 
+// _syncDownloadButtons adjusts the "Download Unplayed (N)" and "Download All (N)"
+// button labels when an episode is hidden or unhidden.
+// delta: +1 when hiding (episode leaves the available pool), -1 when unhiding.
+function _syncDownloadButtons(ep, delta) {
+  const state = window._epState;
+  if (!state?.feed) return;
+  if (ep.status !== "pending" && ep.status !== "failed") return;
+
+  if (!ep.played) {
+    state.feed.unplayed_available_count = Math.max(0, (state.feed.unplayed_available_count || 0) - delta);
+  }
+  state.feed.available_count = Math.max(0, (state.feed.available_count || 0) - delta);
+
+  const n     = state.feed.unplayed_available_count;
+  const total = state.feed.available_count;
+  const relabel = (id, val) => {
+    const btn = document.getElementById(id);
+    if (btn) btn.innerHTML = btn.innerHTML.replace(/\(\d+\)/, `(${val})`);
+  };
+  relabel("btn-dl-unplayed-feed",    n);
+  relabel("btn-dl-unplayed-feed-dd", n);
+  relabel("btn-dl-all-feed",         total);
+}
+
 // _wireFileUpdatesBtn injects (if absent) and wires the "Apply File Updates" button.
 // We call it both during initial page render (where the button may already be in the
 // template) and from the episode-tags modal (where saving tags may trigger the need
@@ -1410,6 +1434,7 @@ window.hideEpisode = async function (id) {
     const ep = await API.hideEpisode(id);
     updateEpisodeRow(ep);
     _syncHiddenBadge(+1);
+    _syncDownloadButtons(ep, +1);
     Toast.info("Episode hidden");
   } catch (e) { Toast.error(e.message); }
 };
@@ -1419,6 +1444,7 @@ window.unhideEpisode = async function (id) {
     const ep = await API.unhideEpisode(id);
     updateEpisodeRow(ep);
     _syncHiddenBadge(-1);
+    _syncDownloadButtons(ep, -1);
     Toast.info("Episode unhidden");
   } catch (e) { Toast.error(e.message); }
 };

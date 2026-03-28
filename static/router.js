@@ -33,6 +33,9 @@ const Router = {
         if (window._syncPollTimer) { clearInterval(window._syncPollTimer); window._syncPollTimer = null; }
         if (window._logsInterval)  { clearInterval(window._logsInterval);  window._logsInterval  = null; }
         if (typeof _stopDLPoll === "function") _stopDLPoll();
+        window._onSyncIdle     = null;
+        window._onDownloadIdle = null;
+        window._onStatusPoll   = null;
         const content = document.getElementById("content");
         content.innerHTML = `<div class="loading-spinner"><div class="spinner"></div></div>`;
         try {
@@ -128,7 +131,8 @@ let _statusBusy = false;
 // this one resolves, we skip the DOM update so the UI never shows outdated data.
 let _statusSeq = 0;
 // Track previous syncing count so we can fire window._onSyncIdle when a sync finishes.
-let _prevSyncingCount = 0;
+let _prevSyncingCount    = 0;
+let _prevDownloadingCount = 0;
 
 // startStatusPolling fires an immediate status fetch then sets up an adaptive interval:
 // 3 s when something is happening (downloads, syncs, imports), 10 s when idle.
@@ -146,6 +150,16 @@ function startStatusPolling() {
       window._onSyncIdle();
     }
     _prevSyncingCount = nowSyncing;
+
+    // Fire the download-idle hook when all downloads finish.
+    const nowDownloading = (s?.active_downloads ?? 0) + (s?.download_queue_size ?? 0);
+    if (_prevDownloadingCount > 0 && nowDownloading === 0 && typeof window._onDownloadIdle === "function") {
+      window._onDownloadIdle();
+    }
+    _prevDownloadingCount = nowDownloading;
+
+    // Let the active view patch itself on every tick while something is happening.
+    if (s && typeof window._onStatusPoll === "function") window._onStatusPoll(s);
 
     const nowBusy = s && (
       !s.scheduler_running ||
