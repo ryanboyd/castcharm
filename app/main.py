@@ -1,11 +1,12 @@
 import logging
 import mimetypes
+import re
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -29,14 +30,20 @@ _buf_handler.setLevel(logging.INFO)
 logging.getLogger().addHandler(_buf_handler)
 
 _static_dir = (Path(__file__).parent.parent / "static").resolve()
+_index_html: str = ""
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    global _index_html
     init_db()
     _ensure_default_settings()
     _cleanup_interrupted_downloads()
     start_scheduler()
+    # Pre-process index.html: inject ?v=<version> into all /static/ asset URLs so
+    # that a container update (e.g. via Watchtower) busts the browser cache.
+    raw = (_static_dir / "index.html").read_text()
+    _index_html = re.sub(r'(src|href)="(/static/[^"]+)"', rf'\1="\2?v={APP_VERSION}"', raw)
     yield
     stop_scheduler()
 
@@ -130,6 +137,9 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         # Don't send the Referer header to external sites
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        # Versioned static assets can be cached indefinitely; index.html sets no-cache itself
+        if request.url.path.startswith("/static/"):
+            response.headers.setdefault("Cache-Control", "public, max-age=31536000, immutable")
         return response
 
 
@@ -274,11 +284,15 @@ def browse_dirs(path: str = Query(default="/")):
 
 
 # Serve the SPA index for the root path only.
+# Cache-Control: no-cache ensures the browser revalidates this on every load,
+# so asset URLs (which carry ?v=<version>) are always current after an update.
 @app.get("/", include_in_schema=False)
 def serve_root():
-    return FileResponse(str(_static_dir / "index.html"))
+    return HTMLResponse(content=_index_html, headers={"Cache-Control": "no-cache"})
 
 
 # Mount static files last, with no catch-all above to shadow it.
+# Assets are served with a long max-age — safe because index.html injects
+# ?v=<APP_VERSION> into every URL, so a version bump busts the cache.
 if _static_dir.is_dir():
     app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
