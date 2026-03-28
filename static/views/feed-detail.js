@@ -1820,6 +1820,7 @@ function showRenumberModal(feedId) {
 }
 
 function showUploadFeedXmlModal(feedId, feed) {
+  // ── Phase 1: file picker ──────────────────────────────────────────────────
   Modal.open(
     "Upload Feed XML",
     `<div class="form-hint" style="margin-bottom:16px">
@@ -1837,53 +1838,24 @@ function showUploadFeedXmlModal(feedId, feed) {
       <button class="btn btn-primary" id="btn-start-xml-upload">Upload</button>
     </div>`,
     (body) => {
-      const btn     = body.querySelector("#btn-start-xml-upload");
-      const fileIn  = body.querySelector("#xml-file-input");
-      const result  = body.querySelector("#xml-upload-result");
+      const btn    = body.querySelector("#btn-start-xml-upload");
+      const fileIn = body.querySelector("#xml-file-input");
+      const result = body.querySelector("#xml-upload-result");
 
       btn.addEventListener("click", async () => {
         const file = fileIn.files[0];
         if (!file) { fileIn.focus(); return; }
         btn.disabled = true;
-        btn.textContent = "Uploading…";
+        btn.textContent = "Scanning…";
         result.style.display = "none";
         try {
-          const r = await API.uploadFeedXml(feedId, file);
-          btn.textContent = "Done";
-          const skippedNote = r.skipped > 0 ? ` · ${r.skipped} duplicate${r.skipped !== 1 ? "s" : ""} excluded` : "";
-          Toast.show(`${r.added} episode${r.added !== 1 ? "s" : ""} added${skippedNote}`, "success", 6000);
-
-          if (r.files_to_rename > 0) {
-            // Show inline rename prompt instead of auto-closing
-            result.style.display = "block";
-            result.style.color = "var(--text-2)";
-            result.innerHTML = `
-              <div style="margin-bottom:10px;color:var(--text-1);font-weight:500">
-                ${r.files_to_rename} downloaded file${r.files_to_rename !== 1 ? "s have" : " has"} updated episode ordering.
-              </div>
-              <div style="display:flex;gap:8px">
-                <button class="btn btn-primary btn-sm" id="btn-xml-rename">Rename Files</button>
-                <button class="btn btn-ghost btn-sm" id="btn-xml-keep">Keep as is</button>
-              </div>`;
-            result.querySelector("#btn-xml-rename").addEventListener("click", async () => {
-              try {
-                await API.applyFileUpdates(feedId);
-                Toast.success("Files renamed successfully");
-              } catch (e) {
-                Toast.error(e.message);
-              }
-              Modal.close();
-              await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]);
-            });
-            result.querySelector("#btn-xml-keep").addEventListener("click", async () => {
-              Modal.close();
-              await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]);
-            });
+          const preview = await API.previewFeedXml(feedId, file);
+          if (preview.collisions.length === 0) {
+            // No conflicts — commit immediately
+            _xmlDoCommit(feedId, preview.temp_id, {}, result, btn);
           } else {
-            result.style.display = "block";
-            result.style.color = "var(--success)";
-            result.textContent = `Done — ${r.added} episode${r.added !== 1 ? "s" : ""} added.`;
-            setTimeout(async () => { Modal.close(); await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]); }, 1500);
+            // Walk the user through each collision
+            _xmlShowCollisionModal(feedId, preview, result, btn);
           }
         } catch (e) {
           result.style.display = "block";
@@ -1895,6 +1867,269 @@ function showUploadFeedXmlModal(feedId, feed) {
       });
     }
   );
+}
+
+// ── Collision walkthrough ─────────────────────────────────────────────────────
+
+function _xmlShowCollisionModal(feedId, preview, _resultEl, _uploadBtn) {
+  const { temp_id, collisions } = preview;
+  const resolutions = {};
+  let idx = 0;
+
+  function pick(key, resolution) {
+    resolutions[key] = resolution;
+    idx++;
+    if (idx >= collisions.length) {
+      _xmlDoCommitInModal(feedId, temp_id, resolutions);
+    } else {
+      render();
+    }
+  }
+
+  function pickWithFlash(cardEl, key, resolution) {
+    cardEl.classList.add("xml-rev-card--chosen");
+    setTimeout(() => pick(key, resolution), 180);
+  }
+
+  function render() {
+    const c       = collisions[idx];
+    const total   = collisions.length;
+    const ex      = c.existing;
+    const inc     = c.incoming;
+
+    const exDT  = ex.published_at  ? fmtDateTime(ex.published_at)  : null;
+    const incDT = inc.published_at ? fmtDateTime(inc.published_at) : null;
+    const dateDiffers = exDT !== incDT;
+    const urlDiffers  = (ex.enclosure_url  || "") !== (inc.enclosure_url  || "");
+    const durDiffers  = (ex.duration       || "") !== (inc.duration       || "");
+
+    const exDescRaw  = _xmlStripHtml(ex.description  || "");
+    const incDescRaw = _xmlStripHtml(inc.description || "");
+    const descDiffers = (exDescRaw || incDescRaw) && exDescRaw !== incDescRaw;
+
+    // Build field rows for one card side.  Only shows fields that differ
+    // (plus status, which is relevant regardless).
+    function cardFields(ep, isExisting) {
+      const dateVal = isExisting ? exDT : incDT;
+      let html = "";
+
+      if (isExisting && ep.status) {
+        html += `<div class="xml-rev-field">
+          <span class="xml-rev-label">Status</span>
+          <span>${statusBadge(ep.status)}</span>
+        </div>`;
+      }
+
+      html += `<div class="xml-rev-field${dateDiffers ? " xml-rev-differs" : ""}">
+        <span class="xml-rev-label">Date</span>
+        <span class="xml-rev-value">${escHTML(dateVal || "—")}</span>
+      </div>`;
+
+      if (urlDiffers) {
+        html += `<div class="xml-rev-field xml-rev-differs">
+          <span class="xml-rev-label">Audio URL</span>
+          <span class="xml-rev-value xml-rev-mono">${escHTML(_xmlShortUrl(ep.enclosure_url || "—"))}</span>
+        </div>`;
+      }
+
+      if (durDiffers && (ep.duration || (isExisting ? inc.duration : ex.duration))) {
+        html += `<div class="xml-rev-field xml-rev-differs">
+          <span class="xml-rev-label">Duration</span>
+          <span class="xml-rev-value">${escHTML(ep.duration || "—")}</span>
+        </div>`;
+      }
+
+      return html;
+    }
+
+    // Description diff section
+    let descSection = "";
+    if (descDiffers) {
+      const diff    = _xmlWordDiff(_xmlLimitWords(exDescRaw, 120), _xmlLimitWords(incDescRaw, 120));
+      const exRend  = _xmlRenderDiff(diff, "a");
+      const incRend = _xmlRenderDiff(diff, "b");
+      descSection = `
+        <div class="xml-rev-desc-section">
+          <div class="xml-rev-desc-hdr">Description differences</div>
+          <div class="xml-rev-desc-cols">
+            <div class="xml-rev-desc-panel">
+              <div class="xml-rev-desc-side-hdr">In app</div>
+              <div class="xml-rev-desc-text">${exRend}</div>
+            </div>
+            <div class="xml-rev-desc-panel">
+              <div class="xml-rev-desc-side-hdr">In file</div>
+              <div class="xml-rev-desc-text">${incRend}</div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    // Progress pips
+    const pips = collisions.map((_, i) => {
+      const cls = i < idx ? "xml-rev-pip xml-rev-pip--done"
+                : i === idx ? "xml-rev-pip xml-rev-pip--active"
+                : "xml-rev-pip";
+      return `<span class="${cls}"></span>`;
+    }).join("");
+
+    document.getElementById("modal-title").textContent = `Review Import Conflict`;
+    document.getElementById("modal-body").innerHTML = `
+      <div class="xml-rev-progress">
+        <span class="xml-rev-progress-text">${idx + 1} of ${total}</span>
+        <div class="xml-rev-pips">${pips}</div>
+      </div>
+      <p class="xml-rev-ep-title">${escHTML(inc.title || ex.title || "Untitled Episode")}</p>
+      <p class="xml-rev-subhead">Click the version you want to keep.</p>
+      <div class="xml-rev-cards">
+        <div class="xml-rev-card" id="xml-card-ex" tabindex="0" role="button">
+          <div class="xml-rev-card-hdr">Already in app</div>
+          <div class="xml-rev-fields">${cardFields(ex, true)}</div>
+          <div class="xml-rev-card-footer">Keep this version</div>
+        </div>
+        <div class="xml-rev-card" id="xml-card-inc" tabindex="0" role="button">
+          <div class="xml-rev-card-hdr">In imported file</div>
+          <div class="xml-rev-fields">${cardFields(inc, false)}</div>
+          <div class="xml-rev-card-footer">Keep this version</div>
+        </div>
+      </div>
+      ${descSection}
+      <div class="xml-rev-both-row">
+        <button class="btn btn-ghost btn-sm" id="xml-keep-both-btn">Keep Both — imported copy tagged [import-dupe]</button>
+      </div>
+      <div class="xml-rev-bulk-row">
+        <button class="btn btn-ghost btn-sm" id="xml-omit-all-btn">Omit All Remaining</button>
+        <button class="btn btn-ghost btn-sm" id="xml-keep-all-btn">Keep All Remaining</button>
+      </div>`;
+
+    const exCard  = document.getElementById("xml-card-ex");
+    const incCard = document.getElementById("xml-card-inc");
+    exCard.addEventListener("click",   () => pickWithFlash(exCard,  c.key, "keep_existing"));
+    incCard.addEventListener("click",  () => pickWithFlash(incCard, c.key, "use_imported"));
+    exCard.addEventListener("keydown",  (e) => { if (e.key === "Enter" || e.key === " ") exCard.click(); });
+    incCard.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") incCard.click(); });
+
+    document.getElementById("xml-keep-both-btn").onclick = () => pick(c.key, "keep_both");
+    document.getElementById("xml-omit-all-btn").onclick  = () => {
+      for (let i = idx; i < collisions.length; i++) resolutions[collisions[i].key] = "keep_existing";
+      _xmlDoCommitInModal(feedId, temp_id, resolutions);
+    };
+    document.getElementById("xml-keep-all-btn").onclick  = () => {
+      for (let i = idx; i < collisions.length; i++) resolutions[collisions[i].key] = "keep_both";
+      _xmlDoCommitInModal(feedId, temp_id, resolutions);
+    };
+  }
+
+  document.getElementById("modal").classList.add("modal-wide");
+  render();
+}
+
+// ── XML diff helpers ──────────────────────────────────────────────────────────
+
+function _xmlStripHtml(html) {
+  const tmp = document.createElement("div");
+  tmp.innerHTML = html;
+  return (tmp.textContent || tmp.innerText || "").replace(/\s+/g, " ").trim();
+}
+
+function _xmlLimitWords(text, max) {
+  const words = text.split(/\s+/).filter(Boolean);
+  return words.length <= max ? text : words.slice(0, max).join(" ") + "…";
+}
+
+function _xmlShortUrl(url) {
+  if (!url) return "";
+  try {
+    const u = new URL(url);
+    const path = u.pathname.length > 40 ? "…" + u.pathname.slice(-32) : u.pathname;
+    return u.hostname + path;
+  } catch {
+    return url.length > 55 ? url.slice(0, 32) + "…" + url.slice(-15) : url;
+  }
+}
+
+function _xmlWordDiff(textA, textB) {
+  const wa = textA.split(/\s+/).filter(Boolean);
+  const wb = textB.split(/\s+/).filter(Boolean);
+  const m = wa.length, n = wb.length;
+  // Full DP table for traceback; cap at 200 words each for performance
+  const MA = Math.min(m, 200), NA = Math.min(n, 200);
+  const dp = Array.from({length: MA + 1}, () => new Uint16Array(NA + 1));
+  for (let i = MA - 1; i >= 0; i--) {
+    for (let j = NA - 1; j >= 0; j--) {
+      dp[i][j] = wa[i] === wb[j] ? dp[i+1][j+1] + 1 : Math.max(dp[i+1][j], dp[i][j+1]);
+    }
+  }
+  const ra = [], rb = [];
+  let i = 0, j = 0;
+  while (i < MA || j < NA) {
+    if (i < MA && j < NA && wa[i] === wb[j]) {
+      ra.push({t: wa[i], s: "="}); rb.push({t: wb[j], s: "="}); i++; j++;
+    } else if (j < NA && (i >= MA || dp[i][j+1] >= dp[i+1][j])) {
+      rb.push({t: wb[j], s: "+"}); j++;
+    } else {
+      ra.push({t: wa[i], s: "-"}); i++;
+    }
+  }
+  return {a: ra, b: rb};
+}
+
+function _xmlRenderDiff(diff, side) {
+  return diff[side].map(tok => {
+    if (tok.s === "=") return escHTML(tok.t);
+    const cls = tok.s === "-" ? "xml-diff-del" : "xml-diff-add";
+    return `<mark class="${cls}">${escHTML(tok.t)}</mark>`;
+  }).join(" ");
+}
+
+async function _xmlDoCommitInModal(feedId, tempId, resolutions) {
+  document.getElementById("modal-title").textContent = "Importing…";
+  document.getElementById("modal-body").innerHTML = `<p style="color:var(--text-2);font-size:13px">Applying your choices…</p>`;
+  try {
+    const r = await API.commitFeedXml(feedId, tempId, resolutions);
+    _xmlHandleResult(feedId, r);
+  } catch (e) {
+    document.getElementById("modal-body").innerHTML = `<p style="color:var(--error);font-size:13px">${escHTML(e.message)}</p>`;
+  }
+}
+
+async function _xmlDoCommit(feedId, tempId, resolutions, resultEl, uploadBtn) {
+  try {
+    const r = await API.commitFeedXml(feedId, tempId, resolutions);
+    _xmlHandleResult(feedId, r);
+  } catch (e) {
+    resultEl.style.display = "block";
+    resultEl.style.color = "var(--error)";
+    resultEl.textContent = e.message;
+    uploadBtn.disabled = false;
+    uploadBtn.textContent = "Upload";
+  }
+}
+
+async function _xmlHandleResult(feedId, r) {
+  const skippedNote = r.skipped > 0 ? ` · ${r.skipped} duplicate${r.skipped !== 1 ? "s" : ""} excluded` : "";
+  Toast.show(`${r.added} episode${r.added !== 1 ? "s" : ""} added${skippedNote}`, "success", 6000);
+
+  if (r.files_to_rename > 0) {
+    document.getElementById("modal-title").textContent = "Files Need Renaming";
+    document.getElementById("modal-body").innerHTML = `
+      <p style="margin-bottom:12px;color:var(--text-1);font-weight:500">
+        ${r.files_to_rename} downloaded file${r.files_to_rename !== 1 ? "s have" : " has"} updated episode ordering.
+      </p>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary btn-sm" id="btn-xml-rename2">Rename Files</button>
+        <button class="btn btn-ghost btn-sm" id="btn-xml-keep2">Keep as is</button>
+      </div>`;
+    document.getElementById("btn-xml-rename2").addEventListener("click", async () => {
+      try { await API.applyFileUpdates(feedId); Toast.success("Files renamed successfully"); } catch (e) { Toast.error(e.message); }
+      Modal.close(); await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]);
+    });
+    document.getElementById("btn-xml-keep2").addEventListener("click", async () => {
+      Modal.close(); await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]);
+    });
+  } else {
+    Modal.close();
+    await Promise.all([_refreshEpisodeList(), _refreshFeedStats()]);
+  }
 }
 
 function showImportFilesModal(feedId, feed) {

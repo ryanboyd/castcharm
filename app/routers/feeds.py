@@ -1,5 +1,7 @@
 import logging
 import os
+import tempfile
+import uuid as _uuid
 from datetime import datetime
 from typing import Optional
 
@@ -17,7 +19,8 @@ from app.schemas import (
     ImportFilesRequest, ImportPreviewRequest, ImportStageRequest,
     ManualFeedCreate,
 )
-from app.rss_parser import fetch_feed_metadata, sync_feed_episodes, resolve_feed_url
+from app.rss_parser import fetch_feed_metadata, sync_feed_episodes, resolve_feed_url, preview_xml_collisions
+from pydantic import BaseModel as _BaseModel
 
 _FIELD_LABELS = {
     "episode.title": "Episode Title",
@@ -35,6 +38,14 @@ _FIELD_LABELS = {
 }
 
 router = APIRouter(prefix="/api/feeds", tags=["feeds"])
+
+# Temporary XML files staged for collision-reviewed import: temp_id → file path
+_pending_xml_imports: dict[str, str] = {}
+
+
+class _CommitXmlBody(_BaseModel):
+    temp_id: str
+    resolutions: dict = {}
 
 
 def _bulk_episode_counts(feed_ids: list[int], db: Session) -> dict[int, dict]:
@@ -1144,7 +1155,7 @@ async def import_feed_xml(
         with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
             tmp.write(content)
             tmp_path = tmp.name
-        added, skipped = sync_feed_episodes(feed, db, parse_url=tmp_path)
+        added, skipped = sync_feed_episodes(feed, db, parse_url=tmp_path, xml_import=True)
         db.commit()
         count = len(added) if added else 0
 
@@ -1172,6 +1183,98 @@ async def import_feed_xml(
                 os.unlink(tmp_path)
             except Exception:
                 pass
+
+
+@router.post("/{feed_id}/preview-feed-xml")
+async def preview_feed_xml(
+    feed_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+):
+    """Parse an XML file and return collision info without committing anything.
+
+    The file is saved to a temp path and a temp_id is returned so the client
+    can follow up with commit-feed-xml once the user resolves each collision.
+    """
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    tmp = tempfile.NamedTemporaryFile(suffix=".xml", delete=False)
+    try:
+        tmp.write(content)
+        tmp.close()
+        result = preview_xml_collisions(feed, db, tmp.name)
+    except Exception as exc:
+        try:
+            os.unlink(tmp.name)
+        except Exception:
+            pass
+        log.warning("Failed to preview feed XML for feed %d: %s", feed_id, exc)
+        raise HTTPException(status_code=400, detail=f"Failed to parse feed XML: {exc}")
+
+    temp_id = str(_uuid.uuid4())
+    _pending_xml_imports[temp_id] = tmp.name
+    return {"temp_id": temp_id, **result}
+
+
+@router.post("/{feed_id}/commit-feed-xml")
+async def commit_feed_xml(
+    feed_id: int,
+    body: _CommitXmlBody,
+    db: Session = Depends(get_db),
+):
+    """Apply a collision-reviewed XML import.
+
+    resolutions maps each collision key (incoming GUID) to one of:
+      "keep_existing" — skip the incoming episode
+      "use_imported"  — update the existing episode in-place with the imported data
+      "keep_both"     — add both; tag the newer one with [dupe]
+    """
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    tmp_path = _pending_xml_imports.pop(body.temp_id, None)
+    if not tmp_path or not os.path.exists(tmp_path):
+        raise HTTPException(status_code=400, detail="Import session expired or not found")
+
+    try:
+        added, skipped = sync_feed_episodes(
+            feed, db, parse_url=tmp_path, xml_import=True, resolutions=body.resolutions
+        )
+        db.commit()
+        count = len(added) if added else 0
+
+        from app.routers.episodes import recalc_seq_numbers
+        primary_id = feed.primary_feed_id or feed.id
+        recalc_seq_numbers(primary_id, db)
+        db.commit()
+
+        files_to_rename = db.query(Episode).filter(
+            Episode.feed_id == primary_id,
+            Episode.filename_outdated == True,
+            Episode.file_path != None,
+        ).count()
+
+        log.info(
+            "Feed XML committed for %s (id=%d): %d added, %d skipped, %d file(s) need renaming",
+            feed.title or feed.url, feed_id, count, skipped, files_to_rename,
+        )
+        return {"added": count, "skipped": skipped, "files_to_rename": files_to_rename}
+    except Exception as exc:
+        db.rollback()
+        log.warning("Failed to commit feed XML for feed %d: %s", feed_id, exc)
+        raise HTTPException(status_code=400, detail="Failed to import feed XML")
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
 
 
 @router.get("/{feed_id}/cleanup-preview")

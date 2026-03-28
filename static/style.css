@@ -2173,3 +2173,199 @@ body.has-player #content { padding-bottom: 80px; }
   background: var(--primary-light);
   color: var(--primary);
 }
+
+/* ── XML import collision review modal ──────────────────────────────────────── */
+.xml-rev-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.xml-rev-progress-text {
+  font-size: 12px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.xml-rev-pips {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+.xml-rev-pip {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+}
+.xml-rev-pip--active {
+  background: var(--primary);
+}
+.xml-rev-pip--done {
+  background: var(--success);
+}
+.xml-rev-ep-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-1);
+  margin: 0 0 4px;
+  line-height: 1.4;
+}
+.xml-rev-subhead {
+  font-size: 12px;
+  color: var(--text-3);
+  margin: 0 0 14px;
+}
+.xml-rev-cards {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.xml-rev-card {
+  background: var(--bg-3);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease, transform 0.1s ease;
+  outline: none;
+  overflow: hidden;
+}
+.xml-rev-card:hover,
+.xml-rev-card:focus-visible {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+  transform: translateY(-1px);
+}
+.xml-rev-card--chosen {
+  border-color: var(--success) !important;
+  box-shadow: 0 0 0 3px rgba(var(--success-rgb, 50 190 90) / 0.2) !important;
+}
+.xml-rev-card-hdr {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  padding: 10px 12px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.xml-rev-fields {
+  padding: 10px 12px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.xml-rev-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.xml-rev-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+.xml-rev-value {
+  font-size: 13px;
+  color: var(--text-1);
+}
+.xml-rev-mono {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--text-2);
+  word-break: break-all;
+}
+.xml-rev-field.xml-rev-differs .xml-rev-value {
+  background: rgba(240, 170, 0, 0.12);
+  border-radius: 3px;
+  padding: 1px 4px;
+  border-left: 2px solid rgba(240, 170, 0, 0.5);
+}
+.xml-rev-card-footer {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-3);
+  text-align: center;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  transition: color 0.1s, background 0.1s;
+}
+.xml-rev-card:hover .xml-rev-card-footer,
+.xml-rev-card:focus-visible .xml-rev-card-footer {
+  color: var(--primary);
+  background: var(--primary-light);
+}
+/* Description diff */
+.xml-rev-desc-section {
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+.xml-rev-desc-hdr {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-3);
+  margin-bottom: 8px;
+}
+.xml-rev-desc-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.xml-rev-desc-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.xml-rev-desc-side-hdr {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+}
+.xml-rev-desc-text {
+  font-size: 12px;
+  line-height: 1.65;
+  color: var(--text-2);
+  max-height: 110px;
+  overflow-y: auto;
+}
+mark.xml-diff-del {
+  background: rgba(220, 60, 60, 0.15);
+  color: var(--error);
+  text-decoration: line-through;
+  border-radius: 2px;
+}
+mark.xml-diff-add {
+  background: rgba(50, 190, 80, 0.15);
+  color: var(--success);
+  border-radius: 2px;
+}
+/* Keep both + bulk actions */
+.xml-rev-both-row {
+  margin-bottom: 8px;
+}
+.xml-rev-both-row .btn {
+  width: 100%;
+  justify-content: center;
+}
+.xml-rev-bulk-row {
+  display: flex;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.xml-rev-bulk-row .btn {
+  flex: 1;
+  justify-content: center;
+}

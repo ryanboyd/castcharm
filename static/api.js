@@ -176,5 +176,7 @@ const API = {
   importOpml: (file) => _upload("/api/feeds/opml", "file", file),
 
   // ── Feed XML import ──────────────────────────────────────────
-  uploadFeedXml: (id, file) => _upload(`/api/feeds/${id}/import-feed-xml`, "file", file),
+  uploadFeedXml:   (id, file) => _upload(`/api/feeds/${id}/import-feed-xml`, "file", file),
+  previewFeedXml:  (id, file) => _upload(`/api/feeds/${id}/preview-feed-xml`, "file", file),
+  commitFeedXml:   (id, tempId, resolutions) => API.post(`/api/feeds/${id}/commit-feed-xml`, { temp_id: tempId, resolutions }),
 };
