@@ -1,16 +1,21 @@
 import logging
 import os
 from datetime import datetime
+from typing import Optional
 
 log = logging.getLogger(__name__)
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Form
 from app.downloader import enqueue_download
 from sqlalchemy import func, text, bindparam
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Feed, Episode, GlobalSettings
-from app.schemas import FeedCreate, FeedUpdate, FeedOut, EpisodeOut, RSSSourceInfo, ImportFilesRequest, ManualFeedCreate
+from app.schemas import (
+    FeedCreate, FeedUpdate, FeedOut, EpisodeOut, RSSSourceInfo,
+    ImportFilesRequest, ImportPreviewRequest, ImportStageRequest,
+    ManualFeedCreate,
+)
 from app.rss_parser import fetch_feed_metadata, sync_feed_episodes, resolve_feed_url
 
 _FIELD_LABELS = {
@@ -134,6 +139,22 @@ def _feed_out(feed: Feed, db: Session, counts: dict | None = None) -> FeedOut:
     return data
 
 
+def _check_title_conflict(title: str, db: Session, exclude_id: int | None = None) -> Feed | None:
+    """Return an existing primary feed whose sanitized folder name matches *title*, or None."""
+    from app.downloader import _sanitize_filename
+    target = _sanitize_filename(title).lower()
+    if not target:
+        return None
+    feeds = db.query(Feed).filter(Feed.primary_feed_id.is_(None))
+    if exclude_id is not None:
+        feeds = feeds.filter(Feed.id != exclude_id)
+    for f in feeds:
+        existing = _sanitize_filename(f.podcast_group or f.title or "").lower()
+        if existing and existing == target:
+            return f
+    return None
+
+
 @router.get("", response_model=list[FeedOut])
 def list_feeds(db: Session = Depends(get_db)):
     feeds = db.query(Feed).filter(Feed.primary_feed_id.is_(None)).order_by(Feed.title).all()
@@ -186,6 +207,20 @@ def add_feed(body: FeedCreate, background_tasks: BackgroundTasks, db: Session = 
     except Exception as e:
         feed.last_error = str(e)
 
+    # Check for folder-name conflict.  title_override sets podcast_group so the
+    # folder uses the user-supplied name rather than the RSS-supplied title.
+    folder_name = body.title_override.strip() if body.title_override else feed.title
+    if folder_name:
+        conflict = _check_title_conflict(folder_name, db, exclude_id=feed.id)
+        if conflict:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "A podcast with this name already exists.", "conflict_title": folder_name},
+            )
+    if body.title_override:
+        feed.podcast_group = body.title_override.strip()
+
     db.commit()
     db.refresh(feed)
 
@@ -201,6 +236,12 @@ def add_manual_feed(body: ManualFeedCreate, db: Session = Depends(get_db)):
     """Create a feed entry without an RSS URL (e.g. for defunct/offline podcasts)."""
     import uuid
     title = body.title.strip()
+    conflict = _check_title_conflict(title, db)
+    if conflict:
+        raise HTTPException(
+            status_code=409,
+            detail={"message": "A podcast with this name already exists.", "conflict_title": title},
+        )
     synthetic_url = f"manual:{uuid.uuid4().hex[:16]}"
     feed = Feed(url=synthetic_url, title=title, active=False,
                 initial_sync_complete=True)
@@ -479,6 +520,7 @@ def download_all_feed(feed_id: int, db: Session = Depends(get_db)):
             Episode.feed_id.in_(all_ids),
             Episode.status.in_(["pending", "failed"]),
             Episode.hidden.is_(False),
+            Episode.enclosure_url.isnot(None),
         )
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
         .all()
@@ -511,6 +553,7 @@ def download_unplayed_feed(feed_id: int, db: Session = Depends(get_db)):
             Episode.status.in_(["pending", "failed"]),
             Episode.hidden.is_(False),
             Episode.played.is_(False),
+            Episode.enclosure_url.isnot(None),
             (Episode.play_position_seconds == None) | (Episode.play_position_seconds == 0),
         )
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
@@ -751,10 +794,31 @@ def import_status(feed_id: int, db: Session = Depends(get_db)):
     return status
 
 
-@router.post("/{feed_id}/rescan")
-def rescan_feed(feed_id: int, background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Re-scan the feed's own podcast folder for newly added audio files."""
-    from app.importer import import_directory, get_import_status, _import_jobs
+@router.post("/{feed_id}/import-preview")
+def import_preview(feed_id: int, body: ImportPreviewRequest, db: Session = Depends(get_db)):
+    """Scan a directory and return per-file match results without writing anything to DB."""
+    from app.importer import preview_import_directory
+
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+
+    directory = body.directory.strip()
+    if not os.path.isdir(directory):
+        raise HTTPException(status_code=400, detail="Directory not found on server")
+
+    return preview_import_directory(feed_id, directory, db)
+
+
+@router.post("/{feed_id}/import-stage")
+def import_stage(
+    feed_id: int,
+    body: ImportStageRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Execute a staged import with explicit per-file episode assignments."""
+    from app.importer import get_import_status, _import_jobs
 
     feed = db.query(Feed).filter(Feed.id == feed_id).first()
     if not feed:
@@ -764,28 +828,28 @@ def rescan_feed(feed_id: int, background_tasks: BackgroundTasks, db: Session = D
     if existing and existing.get("status") == "running":
         raise HTTPException(status_code=409, detail="Import already running for this feed")
 
-    from app.downloader import get_podcast_folder
-    folder = get_podcast_folder(feed, db)
-    if not os.path.isdir(folder):
-        raise HTTPException(status_code=400, detail="Podcast folder not found")
+    items = [item.model_dump() for item in body.items]
+    to_process_count = sum(1 for i in items if not i.get("skip", False))
+    _import_jobs[feed_id] = {
+        "status": "running", "total": to_process_count, "processed": 0,
+        "matched": 0, "created": 0, "renamed": 0, "errors": 0, "message": "Starting…",
+    }
 
-    _import_jobs[feed_id] = {"status": "running", "total": 0, "processed": 0,
-                              "matched": 0, "created": 0, "renamed": 0, "errors": 0,
-                              "message": "Scanning…"}
-
-    log.info("Folder rescan started for: %s (id=%d) — %s", feed.title or feed.url, feed_id, folder)
+    log.info("Staged import started for: %s (id=%d) — %d file(s)", feed.title or feed.url, feed_id, to_process_count)
 
     from app.database import SessionLocal
 
     def _run():
         bg_db = SessionLocal()
         try:
-            import_directory(feed_id, folder, rename_files=False, db=bg_db)
+            from app.importer import import_staged
+            import_staged(feed_id, items, bg_db)
         finally:
             bg_db.close()
 
     background_tasks.add_task(_run)
-    return {"status": "started", "folder": folder}
+    return {"status": "started"}
+
 
 
 @router.get("/{feed_id}/cover.jpg")
@@ -909,30 +973,6 @@ def _bg_sync(feed_id: int):
         except Exception as e:
             feed.last_error = str(e)
             log.error("Sync failed for %s (id=%d): %s", feed.title or feed.url, feed_id, e)
-
-        # On the initial sync, import any audio files already present in the folder.
-        # This handles the case where the user already has files downloaded before
-        # adding the feed.  We use the full importer (not just scan_existing_files)
-        # so that files without a matching RSS episode still get registered.
-        # rename_files=False: files are already in the expected location.
-        if was_initial:
-            try:
-                from app.downloader import get_podcast_folder
-                primary_id = feed.primary_feed_id or feed.id
-                primary = db.query(Feed).filter(Feed.id == primary_id).first()
-                if primary:
-                    folder = get_podcast_folder(primary, db)
-                    if os.path.isdir(folder):
-                        from app.importer import import_directory, AUDIO_EXTENSIONS
-                        has_audio = any(
-                            os.path.splitext(f)[1].lower() in AUDIO_EXTENSIONS
-                            for _r, _d, files in os.walk(folder)
-                            for f in files
-                        )
-                        if has_audio:
-                            import_directory(primary_id, folder, rename_files=False, db=db)
-            except Exception as e:
-                log.warning("Auto-import on initial sync failed: %s", e)
 
         # If user requested "download all" on first sync, queue every episode now
         if was_initial and feed.download_all_on_first_sync:
@@ -1112,6 +1152,111 @@ def cleanup_preview(feed_id: int, db: Session = Depends(get_db)):
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
     return preview_keep_latest_cleanup(feed_id, db)
+
+
+@router.post("/from-xml", response_model=FeedOut, status_code=201)
+async def create_feed_from_xml(
+    file: UploadFile = File(...),
+    title_override: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """Create a new podcast feed by uploading a local RSS/XML file.
+
+    Parses feed-level metadata and all episodes from the file.  A synthetic
+    ``local:<uuid>`` URL is assigned so the feed never tries to sync from a
+    network address.
+    """
+    import tempfile
+    import uuid as _uuid
+    import feedparser
+
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".xml", delete=False) as tmp:
+            tmp.write(content)
+            tmp_path = tmp.name
+
+        # Parse feed-level metadata
+        parsed = feedparser.parse(tmp_path)
+        if parsed.get("bozo") and not parsed.entries:
+            exc = parsed.get("bozo_exception")
+            raise HTTPException(status_code=400, detail=f"Invalid RSS/XML file: {exc}")
+
+        fi = parsed.feed
+        feed_title = (title_override.strip() if title_override else None) or getattr(fi, "title", None) or "Imported Podcast"
+        description = getattr(fi, "description", None) or getattr(fi, "subtitle", None)
+        author = (getattr(fi, "author", None) or getattr(fi, "itunes_author", None) or "").strip() or None
+        website_url = getattr(fi, "link", None)
+        language = getattr(fi, "language", None)
+
+        # Image URL (handles RSS <image>, Atom <logo>, iTunes <itunes:image>)
+        image_url = None
+        img = getattr(fi, "image", None)
+        if img:
+            image_url = getattr(img, "href", None) or getattr(img, "url", None)
+        if not image_url:
+            itunes_img = getattr(fi, "itunes_image", None)
+            if itunes_img:
+                image_url = (getattr(itunes_img, "href", None)
+                             or (itunes_img if isinstance(itunes_img, str) else None))
+
+        # Check for folder-name conflict before committing anything
+        conflict = _check_title_conflict(feed_title, db)
+        if conflict:
+            raise HTTPException(
+                status_code=409,
+                detail={"message": "A podcast with this name already exists.", "conflict_title": feed_title},
+            )
+
+        # Unique local URL — retry on collision (astronomically unlikely)
+        local_url = f"local:{_uuid.uuid4().hex[:16]}"
+        while db.query(Feed).filter(Feed.url == local_url).first():
+            local_url = f"local:{_uuid.uuid4().hex[:16]}"
+
+        feed = Feed(
+            url=local_url,
+            title=feed_title,
+            description=description,
+            image_url=image_url,
+            website_url=website_url,
+            author=author,
+            language=language,
+        )
+        db.add(feed)
+        db.flush()
+
+        # Parse and insert all episodes from the XML
+        added, skipped = sync_feed_episodes(feed, db, parse_url=tmp_path)
+        feed.initial_sync_complete = True
+        db.commit()
+
+        from app.routers.episodes import recalc_seq_numbers
+        recalc_seq_numbers(feed.id, db)
+        db.commit()
+        db.refresh(feed)
+
+        log.info(
+            "Feed created from XML: '%s' (id=%d) — %d episode(s) added, %d skipped",
+            feed.title, feed.id, len(added or []), skipped,
+        )
+        return _feed_out(feed, db)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        db.rollback()
+        log.error("create_feed_from_xml failed: %s", e)
+        raise HTTPException(status_code=400, detail=f"Failed to parse RSS/XML: {e}")
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
 
 @router.post("/opml", status_code=200)

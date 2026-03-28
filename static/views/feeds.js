@@ -144,13 +144,9 @@ async function viewFeeds() {
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button class="btn btn-ghost" id="btn-sync-all">
             ${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')}
-            Sync All
+            Sync All Feeds
           </button>
-          <button class="btn btn-ghost" id="btn-scan-folders" title="Scan downloads folder for unrecognized podcast folders">
-            ${svg('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}
-            Scan Downloads
-          </button>
-          <a class="btn btn-ghost" href="${API.exportOpml()}" download>
+            <a class="btn btn-ghost" href="${API.exportOpml()}" download>
             ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}
             Export OPML
           </a>
@@ -180,13 +176,8 @@ async function viewFeeds() {
         ? `<div class="empty-state">
             <div class="empty-state-icon">🎙</div>
             <div class="empty-state-title">No feeds yet</div>
-            <div class="empty-state-desc">Add a podcast to get started, or scan your downloads folder if you already have files.</div>
-            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-              <button class="btn btn-primary" id="btn-add-feed-empty">Add Your First Podcast</button>
-              <button class="btn btn-ghost" id="btn-scan-folders-empty" title="Look for existing podcast folders in your downloads directory">
-                ${svg('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')} Scan Downloads Folder
-              </button>
-            </div>
+            <div class="empty-state-desc">Add a podcast to get started.</div>
+            <button class="btn btn-primary" id="btn-add-feed-empty">Add Your First Podcast</button>
           </div>`
         : `<div class="feeds-grid" id="feeds-grid">
             ${_sortFeeds(feeds).map(feedCard).join("")}
@@ -201,29 +192,6 @@ async function viewFeeds() {
     localStorage.setItem("feeds_sort", _feedsSort);
     _flipReorderGrid(_sortFeeds(_feedsData));
   });
-
-  async function doScanFolders(btn) {
-    btn.disabled = true;
-    const orig = btn.innerHTML;
-    btn.textContent = "Scanning…";
-    try {
-      const r = await API.scanFolders();
-      if (r.created > 0) {
-        Toast.success(`Found ${r.created} new podcast folder${r.created !== 1 ? "s" : ""} — importing files in the background.`);
-        await _refreshFeedsGrid();
-      } else {
-        Toast.success("No new podcast folders found in the downloads directory.");
-      }
-    } catch (err) {
-      Toast.error(err.message);
-    } finally {
-      btn.disabled = false;
-      btn.innerHTML = orig;
-    }
-  }
-  document.getElementById("btn-scan-folders-empty")?.addEventListener("click", (e) => doScanFolders(e.currentTarget));
-
-  document.getElementById("btn-scan-folders")?.addEventListener("click", (e) => doScanFolders(e.currentTarget));
 
   document.getElementById("opml-file-input")?.addEventListener("change", async (e) => {
     const file = e.target.files?.[0];
@@ -295,7 +263,7 @@ async function viewFeeds() {
       Toast.error(err.message);
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All`;
+      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All Feeds`;
     }
   });
 }
@@ -339,15 +307,11 @@ window.filterFeedCards = function () {
 };
 
 function showAddFeedModal() {
-  // Persisted across wizard steps
-  const S = { url: "", title: "", dir: "", rename: true, byYear: true, datePfx: true, epPfx: true, downloadAll: false };
-
   const IC = {
     rss:    '<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>',
-    folder: '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',
+    xml:    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="10 13 8 15 10 17"/><polyline points="14 13 16 15 14 17"/>',
+    manual: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
     back:   '<polyline points="15 18 9 12 15 6"/>',
-    shield: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>',
-    info:   '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
   };
 
   function _card(id, icon, title, desc) {
@@ -360,225 +324,266 @@ function showAddFeedModal() {
     </button>`;
   }
 
-  function _back() {
-    return `<button id="btn-wiz-back" class="wiz-back-btn">${svg(IC.back,'width="13" height="13"')} Back</button>`;
-  }
 
-  function _orgOpts(pfx) {
-    const chk = (id, label, checked) =>
-      `<label class="wiz-check"><input type="checkbox" id="${id}" ${checked?"checked":""} />${label}</label>`;
-    return `
-      ${chk(`${pfx}-by-year`,  "Organize into year subfolders",      S.byYear)}
-      ${chk(`${pfx}-date-pfx`, "Include date prefix in filenames",   S.datePfx)}
-      ${chk(`${pfx}-ep-pfx`,   "Include episode number in filenames", S.epPfx)}`;
-  }
-
-  function _saveOrg(b, pfx) {
-    S.byYear  = b.querySelector(`#${pfx}-by-year`)?.checked  ?? S.byYear;
-    S.datePfx = b.querySelector(`#${pfx}-date-pfx`)?.checked ?? S.datePfx;
-    S.epPfx   = b.querySelector(`#${pfx}-ep-pfx`)?.checked   ?? S.epPfx;
-  }
-
-  function _triggerImport(feedId, dir, rename, delay = 0) {
-    setTimeout(async () => {
-      try {
-        await API.importFiles(feedId, dir, {
-          renameFiles: rename, organizeByYear: rename ? S.byYear : null,
-          datePrefix: rename ? S.datePfx : null, epNumPrefix: rename ? S.epPfx : null,
-          saveAsDefaults: rename,
-        });
-      } catch (e) { Toast.error("Import error: " + e.message); }
-    }, delay);
-  }
-
-  function goTo(step) {
-    document.getElementById("modal-title").textContent =
-      step === "type" ? "Add a Podcast" : step === "rss" ? "Add by Feed URL" : "Offline / No RSS Feed";
+  function goTo(step, data = {}) {
     const B = document.getElementById("modal-body");
 
     // ── Step 1: choose type ──────────────────────────────────────────────
     if (step === "type") {
+      document.getElementById("modal-title").textContent = "Add a Podcast";
       B.innerHTML = `
         <p style="color:var(--text-2);font-size:13px;margin:0 0 14px">How would you like to add this podcast?</p>
         <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:18px">
-          ${_card("pick-rss",  IC.rss,    "I have a feed URL",
-            "Subscribe to an RSS or Atom feed. CastCharm syncs new episodes automatically — this is the most common option.")}
-          ${_card("pick-off",  IC.folder, "I have audio files but no feed",
-            "Import files for an archived or defunct podcast. No RSS required — CastCharm reads metadata from your files.")}
+          ${_card("pick-rss", IC.rss, "RSS or Atom feed URL",
+            "Subscribe with a feed link. CastCharm syncs new episodes automatically — the most common way to add a podcast.")}
+          ${_card("pick-xml", IC.xml, "Upload a local RSS/XML file",
+            "Have a saved feed file from a defunct podcast or private archive? Upload it to restore all episodes.")}
+          ${_card("pick-manual", IC.manual, "No feed — manual podcast",
+            "Create a podcast entry without a feed. Import episodes from files later via the feed page.")}
         </div>
         <div class="modal-actions" style="padding-top:0;border:none">
           <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
         </div>`;
-      B.querySelector("#pick-rss").addEventListener("click", () => goTo("rss"));
-      B.querySelector("#pick-off").addEventListener("click", () => goTo("offline"));
+      B.querySelector("#pick-rss").addEventListener("click",    () => goTo("rss"));
+      B.querySelector("#pick-xml").addEventListener("click",    () => goTo("xml"));
+      B.querySelector("#pick-manual").addEventListener("click", () => goTo("manual"));
     }
 
     // ── Step 2a: RSS URL ─────────────────────────────────────────────────
     else if (step === "rss") {
+      document.getElementById("modal-title").textContent = "Add by Feed URL";
       B.innerHTML = `
-        ${_back()}
         <div class="form-group">
           <label class="form-label">RSS or Atom feed URL</label>
-          <input class="form-control" id="rss-url" type="url" value="${S.url}" placeholder="https://feeds.example.com/podcast.xml" autocomplete="off" />
-          <div class="form-hint" style="margin-top:5px">Paste the podcast's feed URL. CastCharm fetches episode details and starts syncing immediately.</div>
+          <input class="form-control" id="rss-url" type="url" placeholder="https://feeds.example.com/podcast.xml" autocomplete="off" />
+          <div class="form-hint" style="margin-top:5px">Paste the podcast's feed URL. Apple Podcasts links are resolved automatically.</div>
         </div>
-        <details style="margin-bottom:16px" ${S.dir?"open":""}>
-          <summary style="cursor:pointer;font-size:13px;color:var(--text-3);user-select:none;padding:4px 0">
-            I also have existing audio files to import from a different location
-          </summary>
-          <div class="wiz-info-box">
-            <p style="font-size:12px;color:var(--text-3);margin:0 0 10px;line-height:1.5">
-              ${svg(IC.info,'width="13" height="13" style="display:inline;vertical-align:-2px;margin-right:4px;color:var(--primary)"')}
-              If files are <em>already in your downloads folder</em>, CastCharm detects them automatically — skip this. Only use it for files stored elsewhere.
-            </p>
-            <div class="form-group" style="margin-bottom:10px">
-              <label class="form-label">External directory</label>
-              <input class="form-control" id="rss-ext-dir" type="text" value="${S.dir}" placeholder="/path/to/audio/files" />
-            </div>
-            <div id="rss-ext-opts" style="display:${S.dir?"":"none"}">
-              <label class="wiz-rename-label">
-                <input type="checkbox" id="rss-chk-rename" ${S.rename?"checked":""} />
-                Copy &amp; organize files into the downloads folder
-              </label>
-              <div id="rss-org-opts" class="wiz-indent" style="display:${S.rename?"":"none"}">${_orgOpts("rss")}</div>
-            </div>
-          </div>
-        </details>
         <label class="wiz-rename-label" style="margin-bottom:14px">
-          <input type="checkbox" id="rss-chk-dl-all" ${S.downloadAll?"checked":""} />
+          <input type="checkbox" id="rss-chk-dl-all" />
           Download all available episodes
-          <span style="font-weight:400;color:var(--text-3);font-size:12px;display:block;padding-left:23px;margin-top:2px">Queue every existing episode once the feed syncs. You can also do this later from the feed page.</span>
+          <span style="font-weight:400;color:var(--text-3);font-size:12px;display:block;padding-left:23px;margin-top:2px">
+            Queue every existing episode once the feed syncs. You can also do this later from the feed page.
+          </span>
         </label>
         <div id="rss-err" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+          <button class="btn btn-ghost" id="btn-wiz-back">Back</button>
           <button class="btn btn-primary" id="btn-add-rss">Add Podcast</button>
         </div>`;
 
       const urlIn   = B.querySelector("#rss-url");
-      const dirIn   = B.querySelector("#rss-ext-dir");
-      const extOpts = B.querySelector("#rss-ext-opts");
-      const chkRen  = B.querySelector("#rss-chk-rename");
-      const orgOpts = B.querySelector("#rss-org-opts");
       const chkDlAll = B.querySelector("#rss-chk-dl-all");
       const errEl   = B.querySelector("#rss-err");
+      B.querySelector("#btn-wiz-back").addEventListener("click", () => goTo("type"));
 
-      urlIn.addEventListener("input",   (e) => { S.url = e.target.value; });
-      dirIn.addEventListener("input",   (e) => { S.dir = e.target.value.trim(); extOpts.style.display = S.dir ? "" : "none"; });
-      chkRen?.addEventListener("change", (e) => { S.rename = e.target.checked; orgOpts.style.display = S.rename ? "" : "none"; });
-      chkDlAll?.addEventListener("change", (e) => { S.downloadAll = e.target.checked; });
-      B.querySelector("#btn-wiz-back").addEventListener("click", () => { S.url = urlIn.value; goTo("type"); });
-
-      B.querySelector("#btn-add-rss").addEventListener("click", async () => {
+      async function submit() {
         const url = urlIn.value.trim();
         if (!url) { urlIn.focus(); return; }
-        _saveOrg(B, "rss");
-        const downloadAll = chkDlAll?.checked ?? false;
         const btn = B.querySelector("#btn-add-rss");
         btn.disabled = true; btn.textContent = "Adding…"; errEl.style.display = "none";
         let feed;
-        try { feed = await API.addFeed(url, downloadAll); }
-        catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; btn.disabled = false; btn.textContent = "Add Podcast"; return; }
-        const dir = dirIn?.value.trim();
-        const rename = chkRen?.checked ?? true;
-        Modal.close();
-        if (dir) {
-          Toast.success("Podcast added — syncing and importing…");
-          _triggerImport(feed.id, dir, rename, 2000);
-        } else if (downloadAll) {
-          Toast.success("Podcast added — syncing and queuing all episodes…");
-        } else {
-          Toast.success("Podcast added — syncing episodes…");
+        try { feed = await API.addFeed(url, chkDlAll.checked); }
+        catch (e) {
+          if (e.conflict_title != null) {
+            goTo("rss-rename", { url, downloadAll: chkDlAll.checked, conflictTitle: e.conflict_title });
+            return;
+          }
+          errEl.textContent = e.message; errEl.style.display = "block";
+          btn.disabled = false; btn.textContent = "Add Podcast"; return;
         }
+        Modal.close();
+        Toast.success(chkDlAll.checked
+          ? "Podcast added — syncing and queuing all episodes…"
+          : "Podcast added — syncing episodes…");
         await _refreshFeedsGrid();
-      });
+      }
+
+      B.querySelector("#btn-add-rss").addEventListener("click", submit);
+      urlIn.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
       urlIn.focus();
     }
 
-    // ── Step 2b: Offline ─────────────────────────────────────────────────
-    else if (step === "offline") {
+    // ── Step 3a: RSS folder-name conflict rename ─────────────────────────
+    else if (step === "rss-rename") {
+      const { url, downloadAll, conflictTitle } = data;
+      document.getElementById("modal-title").textContent = "Name Already In Use";
       B.innerHTML = `
-        ${_back()}
-        <div class="form-group">
-          <label class="form-label">Podcast title</label>
-          <input class="form-control" id="off-title" type="text" value="${S.title}" placeholder="My Archived Podcast" />
-        </div>
-        <div class="form-group">
-          <label class="form-label">Audio files directory</label>
-          <input class="form-control" id="off-dir" type="text" value="${S.dir}" placeholder="/path/to/audio/files" />
-          <div id="off-dir-hint" class="wiz-dir-hint"></div>
-        </div>
-        <div id="off-copy-sec" class="wiz-info-box" style="display:none;margin-bottom:4px">
-          <label class="wiz-rename-label">
-            <input type="checkbox" id="off-chk-rename" ${S.rename?"checked":""} />
-            Copy &amp; organize files into the downloads folder
-          </label>
-          <div id="off-org-opts" class="wiz-indent" style="display:${S.rename?"":"none"}">${_orgOpts("off")}</div>
-        </div>
-        <p class="wiz-safe-note">
-          ${svg(IC.shield,'width="13" height="13"')}
-          Your original files are never moved or deleted.
+        <p style="color:var(--text-2);font-size:13px;margin:0 0 14px;line-height:1.5">
+          A podcast named <strong>${conflictTitle}</strong> already exists.
+          Enter an alternative name for the new podcast's folder:
         </p>
-        <div id="off-err" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
+        <div class="form-group">
+          <input class="form-control" id="rss-rename-input" type="text" value="${conflictTitle}" autocomplete="off" />
+          <div class="form-hint" style="margin-top:5px">This name is used as the folder name only — the podcast title from the feed is kept as-is.</div>
+        </div>
+        <div id="rss-rename-err" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
         <div class="modal-actions">
-          <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
-          <button class="btn btn-ghost" id="btn-off-skip" title="You can import files later from the feed page">Add without files</button>
-          <button class="btn btn-primary" id="btn-add-off">Add &amp; Import</button>
+          <button class="btn btn-ghost" id="btn-wiz-back">Back</button>
+          <button class="btn btn-primary" id="btn-rss-rename-confirm">Add Podcast</button>
         </div>`;
+      const nameIn = B.querySelector("#rss-rename-input");
+      const errEl2 = B.querySelector("#rss-rename-err");
+      B.querySelector("#btn-wiz-back").addEventListener("click", () => goTo("rss"));
+      nameIn.select();
 
-      const DL = "/downloads";
-      const titleIn = B.querySelector("#off-title");
-      const dirIn   = B.querySelector("#off-dir");
-      const hintEl  = B.querySelector("#off-dir-hint");
-      const copySec = B.querySelector("#off-copy-sec");
-      const chkRen  = B.querySelector("#off-chk-rename");
-      const orgOpts = B.querySelector("#off-org-opts");
-      const errEl   = B.querySelector("#off-err");
-
-      function updateHint() {
-        const dir = dirIn.value.trim();
-        if (!dir) { hintEl.innerHTML = ""; copySec.style.display = "none"; return; }
-        copySec.style.display = "";
-        const internal = dir === DL || dir.startsWith(DL + "/") || dir.startsWith(DL + "\\");
-        if (internal) {
-          hintEl.innerHTML = `<span style="color:var(--success)">&#10003; Inside your downloads folder — files are registered in place, no copying needed.</span>`;
-          if (!chkRen.dataset.u) { chkRen.checked = false; S.rename = false; orgOpts.style.display = "none"; }
-        } else {
-          hintEl.innerHTML = `Files will be <strong>copied</strong> into your downloads folder — originals stay untouched.`;
-          if (!chkRen.dataset.u) { chkRen.checked = true; S.rename = true; orgOpts.style.display = ""; }
-        }
-      }
-
-      titleIn.addEventListener("input", (e) => { S.title = e.target.value; });
-      dirIn.addEventListener("input",   (e) => { S.dir = e.target.value.trim(); updateHint(); });
-      chkRen.addEventListener("change", (e) => { chkRen.dataset.u = "1"; S.rename = e.target.checked; orgOpts.style.display = S.rename ? "" : "none"; });
-      B.querySelector("#btn-wiz-back").addEventListener("click", () => { S.title = titleIn.value; S.dir = dirIn.value.trim(); goTo("type"); });
-
-      async function submit(withFiles) {
-        const title = titleIn.value.trim();
-        if (!title) { titleIn.focus(); return; }
-        if (withFiles && !dirIn.value.trim()) { dirIn.focus(); return; }
-        _saveOrg(B, "off");
-        const addBtn  = B.querySelector("#btn-add-off");
-        const skipBtn = B.querySelector("#btn-off-skip");
-        addBtn.disabled = true; skipBtn.disabled = true; addBtn.textContent = "Adding…"; errEl.style.display = "none";
+      async function submitRename() {
+        const altName = nameIn.value.trim();
+        if (!altName) { nameIn.focus(); return; }
+        const btn = B.querySelector("#btn-rss-rename-confirm");
+        btn.disabled = true; btn.textContent = "Adding…"; errEl2.style.display = "none";
         let feed;
-        try { feed = await API.addManualFeed(title); }
-        catch (e) { errEl.textContent = e.message; errEl.style.display = "block"; addBtn.disabled = false; skipBtn.disabled = false; addBtn.textContent = "Add & Import"; return; }
-        const dir = dirIn.value.trim();
-        Modal.close();
-        if (withFiles && dir) {
-          Toast.success("Podcast added — starting import…");
-          _triggerImport(feed.id, dir, chkRen.checked, 0);
-        } else {
-          Toast.success("Podcast added. Use \"Import from Path\u2026\" on the feed page to add files later.");
+        try { feed = await API.addFeed(url, downloadAll, altName); }
+        catch (e) {
+          if (e.conflict_title != null) {
+            errEl2.textContent = `"${e.conflict_title}" is also already in use — try a different name.`;
+          } else {
+            errEl2.textContent = e.message;
+          }
+          errEl2.style.display = "block";
+          btn.disabled = false; btn.textContent = "Add Podcast"; return;
         }
+        Modal.close();
+        Toast.success(downloadAll
+          ? "Podcast added — syncing and queuing all episodes…"
+          : "Podcast added — syncing episodes…");
         await _refreshFeedsGrid();
       }
 
-      B.querySelector("#btn-add-off").addEventListener("click",  () => submit(true));
-      B.querySelector("#btn-off-skip").addEventListener("click", () => submit(false));
-      updateHint();
+      B.querySelector("#btn-rss-rename-confirm").addEventListener("click", submitRename);
+      nameIn.addEventListener("keydown", (e) => { if (e.key === "Enter") submitRename(); });
+    }
+
+    // ── Step 2b: Upload local RSS/XML file ───────────────────────────────
+    else if (step === "xml") {
+      document.getElementById("modal-title").textContent = "Add from Local RSS/XML File";
+      B.innerHTML = `
+        <p style="color:var(--text-2);font-size:13px;margin:0 0 14px;line-height:1.5">
+          Upload a saved RSS/XML file to create a new podcast entry and restore all episodes from it.
+          You can then import matching audio files from the feed page.
+        </p>
+        <div class="form-group">
+          <label class="form-label">RSS/XML file</label>
+          <input class="form-control" id="xml-file-input" type="file" accept=".xml,.rss,application/rss+xml,application/xml,text/xml" />
+        </div>
+        <div id="xml-err" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btn-wiz-back">Back</button>
+          <button class="btn btn-primary" id="btn-add-xml">Create Podcast</button>
+        </div>`;
+
+      const fileIn = B.querySelector("#xml-file-input");
+      const errEl  = B.querySelector("#xml-err");
+      B.querySelector("#btn-wiz-back").addEventListener("click", () => goTo("type"));
+
+      B.querySelector("#btn-add-xml").addEventListener("click", async () => {
+        const file = fileIn.files?.[0];
+        if (!file) { fileIn.focus(); return; }
+        const btn = B.querySelector("#btn-add-xml");
+        btn.disabled = true; btn.textContent = "Importing…"; errEl.style.display = "none";
+        let feed;
+        try { feed = await API.createFeedFromXml(file); }
+        catch (e) {
+          if (e.conflict_title != null) {
+            goTo("xml-rename", { file, conflictTitle: e.conflict_title });
+            return;
+          }
+          errEl.textContent = e.message; errEl.style.display = "block";
+          btn.disabled = false; btn.textContent = "Create Podcast"; return;
+        }
+        Modal.close();
+        Toast.success(`"${feed.title}" created — ${feed.episode_count} episode${feed.episode_count !== 1 ? "s" : ""} imported from file.`);
+        await _refreshFeedsGrid();
+      });
+    }
+
+    // ── Step 3b: XML title conflict rename ───────────────────────────────
+    else if (step === "xml-rename") {
+      const { file, conflictTitle } = data;
+      document.getElementById("modal-title").textContent = "Name Already In Use";
+      B.innerHTML = `
+        <p style="color:var(--text-2);font-size:13px;margin:0 0 14px;line-height:1.5">
+          A podcast named <strong>${conflictTitle}</strong> already exists.
+          Enter an alternative title for the new podcast:
+        </p>
+        <div class="form-group">
+          <input class="form-control" id="xml-rename-input" type="text" value="${conflictTitle}" autocomplete="off" />
+        </div>
+        <div id="xml-rename-err" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btn-wiz-back">Back</button>
+          <button class="btn btn-primary" id="btn-xml-rename-confirm">Create Podcast</button>
+        </div>`;
+      const nameIn = B.querySelector("#xml-rename-input");
+      const errEl2 = B.querySelector("#xml-rename-err");
+      B.querySelector("#btn-wiz-back").addEventListener("click", () => goTo("xml"));
+      nameIn.select();
+
+      async function submitXmlRename() {
+        const altTitle = nameIn.value.trim();
+        if (!altTitle) { nameIn.focus(); return; }
+        const btn = B.querySelector("#btn-xml-rename-confirm");
+        btn.disabled = true; btn.textContent = "Importing…"; errEl2.style.display = "none";
+        let feed;
+        try { feed = await API.createFeedFromXml(file, altTitle); }
+        catch (e) {
+          if (e.conflict_title != null) {
+            errEl2.textContent = `"${e.conflict_title}" is also already in use — try a different name.`;
+          } else {
+            errEl2.textContent = e.message;
+          }
+          errEl2.style.display = "block";
+          btn.disabled = false; btn.textContent = "Create Podcast"; return;
+        }
+        Modal.close();
+        Toast.success(`"${feed.title}" created — ${feed.episode_count} episode${feed.episode_count !== 1 ? "s" : ""} imported from file.`);
+        await _refreshFeedsGrid();
+      }
+
+      B.querySelector("#btn-xml-rename-confirm").addEventListener("click", submitXmlRename);
+      nameIn.addEventListener("keydown", (e) => { if (e.key === "Enter") submitXmlRename(); });
+    }
+
+    // ── Step 2c: Manual (no feed) ────────────────────────────────────────
+    else if (step === "manual") {
+      document.getElementById("modal-title").textContent = "Manual Podcast";
+      B.innerHTML = `
+        <div class="form-group">
+          <label class="form-label">Podcast title</label>
+          <input class="form-control" id="manual-title" type="text" placeholder="My Podcast" autocomplete="off" />
+          <div class="form-hint" style="margin-top:5px">
+            Creates a podcast entry with no RSS feed. Use <strong>Import Files</strong> on the feed page to add episodes from audio files.
+          </div>
+        </div>
+        <div id="manual-err" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btn-wiz-back">Back</button>
+          <button class="btn btn-primary" id="btn-add-manual">Create Podcast</button>
+        </div>`;
+
+      const titleIn = B.querySelector("#manual-title");
+      const errEl   = B.querySelector("#manual-err");
+      B.querySelector("#btn-wiz-back").addEventListener("click", () => goTo("type"));
+
+      async function submit() {
+        const title = titleIn.value.trim();
+        if (!title) { titleIn.focus(); return; }
+        const btn = B.querySelector("#btn-add-manual");
+        btn.disabled = true; btn.textContent = "Creating…"; errEl.style.display = "none";
+        try { await API.addManualFeed(title); }
+        catch (e) {
+          errEl.textContent = e.conflict_title != null
+            ? `A podcast named "${e.conflict_title}" already exists — choose a different title.`
+            : e.message;
+          errEl.style.display = "block";
+          btn.disabled = false; btn.textContent = "Create Podcast"; return;
+        }
+        Modal.close();
+        Toast.success("Podcast created. Open it to import audio files.");
+        await _refreshFeedsGrid();
+      }
+
+      B.querySelector("#btn-add-manual").addEventListener("click", submit);
+      titleIn.addEventListener("keydown", (e) => { if (e.key === "Enter") submit(); });
       titleIn.focus();
     }
   }

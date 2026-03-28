@@ -59,7 +59,7 @@ async function viewDashboard() {
         <div style="display:flex;gap:8px">
           <button class="btn btn-ghost" id="btn-sync-all-dash">
             ${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')}
-            Sync All
+            Sync All Feeds
           </button>
           <button class="btn btn-primary" onclick="showAddFeedModal()">
             ${svg('<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>')}
@@ -127,42 +127,38 @@ async function viewDashboard() {
       </div>` : ""}
 
       ${(() => {
-        const cats = [
-          { key: "short",      label: "≤ 15 minutes"  },
-          { key: "medium",     label: "≤ 30 minutes"  },
-          { key: "long",       label: "≤ 60 minutes"  },
-          { key: "extra_long", label: "> 60 minutes"  },
-        ].filter(c => suggestions[c.key]?.length > 0);
-        if (!cats.length) return "";
+        const allSuggestions = [
+          ...(suggestions.short      || []),
+          ...(suggestions.medium     || []),
+          ...(suggestions.long       || []),
+          ...(suggestions.extra_long || []),
+        ].slice(0, 6);
+        if (!allSuggestions.length) return "";
         return `
         <div class="card" style="margin-bottom:12px">
           <div class="card-body">
             <div class="section-title" style="margin-bottom:12px">Suggested Listening</div>
             <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 24px">
-              ${cats.map(c => `
-                <div>
-                  <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:6px">${c.label}</div>
-                  ${suggestions[c.key].map(ep => `
-                    <div class="activity-item" style="cursor:pointer"
-                         onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
-                      <div class="activity-icon" style="flex-shrink:0">
-                        ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
-                      </div>
-                      <div class="activity-info" style="flex:1;min-width:0">
-                        <div class="activity-title truncate">${ep.title || "Untitled"}</div>
-                        <div class="activity-sub" style="display:flex;align-items:center;gap:6px">
-                          <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
-                                onmouseover="this.style.textDecorationColor=''"
-                                onmouseout="this.style.textDecorationColor='transparent'"
-                                onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
-                          ${ep.duration ? `<span>· ${ep.duration}</span>` : ""}
-                        </div>
-                      </div>
-                      <button class="btn btn-ghost btn-sm btn-icon" title="Play"
-                              onclick="event.stopPropagation();playEpisode(${ep.id})">
-                        ${svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-                      </button>
-                    </div>`).join("")}
+              ${allSuggestions.map(ep => `
+                <div class="activity-item" style="cursor:pointer"
+                     onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
+                  <div class="activity-icon" style="flex-shrink:0">
+                    ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
+                  </div>
+                  <div class="activity-info" style="flex:1;min-width:0">
+                    <div class="activity-title truncate">${ep.title || "Untitled"}</div>
+                    <div class="activity-sub" style="display:flex;align-items:center;gap:6px">
+                      <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
+                            onmouseover="this.style.textDecorationColor=''"
+                            onmouseout="this.style.textDecorationColor='transparent'"
+                            onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
+                      ${ep.duration ? `<span>· ${ep.duration}</span>` : ""}
+                    </div>
+                  </div>
+                  <button class="btn btn-ghost btn-sm btn-icon" title="Play"
+                          onclick="event.stopPropagation();playEpisode(${ep.id})">
+                    ${svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
+                  </button>
                 </div>`).join("")}
             </div>
           </div>
@@ -297,7 +293,7 @@ async function viewDashboard() {
       Toast.error(err.message);
     } finally {
       btn.disabled = false;
-      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All`;
+      btn.innerHTML = `${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')} Sync All Feeds`;
     }
   });
 }

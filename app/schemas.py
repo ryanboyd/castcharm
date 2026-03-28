@@ -58,6 +58,7 @@ class GlobalSettingsOut(GlobalSettingsBase):
 class FeedCreate(BaseModel):
     url: str
     download_all: bool = False
+    title_override: Optional[str] = None
 
     @field_validator("url")
     @classmethod
@@ -238,3 +239,24 @@ class ImportFilesRequest(BaseModel):
     date_prefix: Optional[bool] = None
     ep_num_prefix: Optional[bool] = None
     save_as_defaults: bool = False
+
+
+# ---------------------------------------------------------------------------
+# Staged import (preview + commit)
+# ---------------------------------------------------------------------------
+
+class ImportPreviewRequest(BaseModel):
+    directory: str
+
+
+class ImportStageItem(BaseModel):
+    path: str
+    episode_id: Optional[int] = None  # None → create new episode
+    skip: bool = False
+    title: Optional[str] = None        # override detected title
+    date: Optional[str] = None         # override date (YYYY-MM-DD)
+    episode_number: Optional[int] = None
+
+
+class ImportStageRequest(BaseModel):
+    items: list[ImportStageItem]

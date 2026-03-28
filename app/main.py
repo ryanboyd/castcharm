@@ -37,17 +37,6 @@ async def lifespan(app: FastAPI):
     _ensure_default_settings()
     _cleanup_interrupted_downloads()
     start_scheduler()
-    # Only run the startup scan when setup has been completed. On first boot the
-    # setup wizard POSTs to /api/setup/complete which triggers the scan itself.
-    db = SessionLocal()
-    try:
-        from app.models import GlobalSettings
-        gs = db.query(GlobalSettings).first()
-        if gs and gs.setup_complete:
-            from app.startup_scan import run_in_background as _startup_scan
-            _startup_scan()
-    finally:
-        db.close()
     yield
     stop_scheduler()
 
@@ -231,7 +220,6 @@ def get_status():
         from app.activity import get_syncing_count
         from app.scheduler import get_next_run_any
         from app.importer import get_active_import_count
-        from app.startup_scan import is_scanning
         return StatusOut(
             scheduler_running=is_running(),
             download_queue_size=download_queue_size,
@@ -246,7 +234,7 @@ def get_status():
             syncing_count=get_syncing_count(),
             next_sync_at=get_next_run_any(),
             importing_count=get_active_import_count(),
-            scanning=is_scanning(),
+            scanning=False,
         )
     finally:
         db.close()

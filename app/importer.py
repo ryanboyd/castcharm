@@ -354,6 +354,422 @@ def _interpolate_missing_dates(feed_id: int, db: Session) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Scored matching (used by preview and staged import)
+# ---------------------------------------------------------------------------
+
+def _dur_seconds(s: Optional[str]) -> Optional[int]:
+    """Parse a duration string (H:MM:SS or M:SS) to total seconds."""
+    if not s:
+        return None
+    try:
+        parts = str(s).split(":")
+        if len(parts) == 3:
+            return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        if len(parts) == 2:
+            return int(parts[0]) * 60 + int(parts[1])
+    except (ValueError, TypeError):
+        pass
+    return None
+
+
+def _match_to_episode_scored(
+    sidecar: dict, tags: dict, fn_info: dict,
+    candidates: list,
+    file_dur_s: Optional[int] = None,
+) -> list:
+    """Return (episode, confidence, method) triples sorted by confidence desc.
+
+    Confidence factors (max 1.0):
+      title similarity  × 0.60
+      episode number    × 0.25
+      duration ≤5% diff × 0.15  (partial credit down to ≤15% diff)
+    GUID / enclosure URL hits return confidence 1.0 and skip scoring.
+    """
+    title = (sidecar.get("title") or tags.get("title") or fn_info.get("title") or "").strip()
+
+    ep_num = None
+    if sidecar.get("episode_number"):
+        try:
+            ep_num = int(sidecar["episode_number"])
+        except (ValueError, TypeError):
+            pass
+    if ep_num is None and tags.get("tracknumber"):
+        ep_num = _parse_tracknumber(tags["tracknumber"])
+    if ep_num is None:
+        ep_num = fn_info.get("episode_number")
+
+    results = []
+    for ep in candidates:
+        # Definitive matches via our own sidecar metadata
+        if sidecar.get("guid") and ep.guid == sidecar["guid"]:
+            results.append((ep, 1.0, "guid"))
+            continue
+        if sidecar.get("enclosure_url") and ep.enclosure_url == sidecar["enclosure_url"]:
+            results.append((ep, 1.0, "url"))
+            continue
+
+        score = 0.0
+
+        # Title similarity (weight 0.60)
+        if title and ep.title:
+            score += _similarity(title, ep.title) * 0.60
+
+        # Episode number match (weight 0.25)
+        if ep_num is not None and ep.episode_number == ep_num:
+            score += 0.25
+
+        # Duration proximity (weight 0.15)
+        ep_dur_s = _dur_seconds(ep.duration)
+        if file_dur_s and ep_dur_s and ep_dur_s > 0:
+            ratio = min(file_dur_s, ep_dur_s) / max(file_dur_s, ep_dur_s)
+            if ratio >= 0.95:
+                score += 0.15
+            elif ratio >= 0.85:
+                score += 0.08
+
+        if score < 0.15:
+            continue  # not worth returning
+
+        if ep_num is not None and ep.episode_number == ep_num and title and ep.title and _similarity(title, ep.title) >= 0.35:
+            method = "ep_num_title"
+        elif title and ep.title and _similarity(title, ep.title) >= 0.35:
+            method = "title"
+        elif ep_num is not None and ep.episode_number == ep_num:
+            method = "ep_num"
+        else:
+            method = "fuzzy"
+
+        results.append((ep, min(score, 0.99), method))
+
+    results.sort(key=lambda x: x[1], reverse=True)
+    return results
+
+
+# ---------------------------------------------------------------------------
+# Preview (dry-run — no DB writes)
+# ---------------------------------------------------------------------------
+
+def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
+    """Scan *directory* and return match results without committing anything to DB.
+
+    Returns a dict with:
+      files        — list of per-file preview objects
+      total_files  — total audio files found
+      matched      — files with a confident episode match
+      unmatched    — files that would create a new episode
+      registered   — files already linked to an episode (shown as read-only)
+    """
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        return {"error": "Feed not found", "files": [], "total_files": 0, "matched": 0, "unmatched": 0, "registered": 0}
+
+    # Collect audio files
+    audio_files: list[str] = []
+    for root, _dirs, files in os.walk(directory):
+        for fname in sorted(files):
+            if os.path.splitext(fname)[1].lower() in AUDIO_EXTENSIONS:
+                audio_files.append(os.path.join(root, fname))
+
+    # All feed episodes (including supplementary feeds)
+    primary_id = feed.primary_feed_id or feed.id
+    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
+    all_feed_ids = [primary_id] + sub_ids
+
+    existing = (
+        db.query(Episode)
+        .filter(Episode.feed_id.in_(all_feed_ids), Episode.hidden.is_(False))
+        .all()
+    )
+
+    registered_paths = {
+        os.path.normpath(ep.file_path): ep
+        for ep in existing
+        if ep.file_path and os.path.exists(ep.file_path)
+    }
+    # Episodes without a file on disk are candidates for matching
+    candidates = [ep for ep in existing if not (ep.file_path and os.path.exists(ep.file_path))]
+
+    matched_ep_ids: set[int] = set()
+    file_previews = []
+
+    for audio_path in audio_files:
+        norm_path = os.path.normpath(audio_path)
+        stem = os.path.splitext(os.path.basename(audio_path))[0]
+
+        sidecar = _read_xml_sidecar(audio_path)
+        tags    = _read_id3_tags(audio_path)
+        fn_info = _parse_filename(stem)
+
+        title    = (sidecar.get("title") or tags.get("title") or fn_info.get("title") or stem).strip()
+        duration = sidecar.get("duration") or tags.get("duration")
+
+        published_at = None
+        if sidecar.get("published"):
+            published_at = _parse_date(sidecar["published"])
+        if published_at is None and fn_info.get("date"):
+            published_at = fn_info["date"]
+        if published_at is None and tags.get("date"):
+            published_at = _parse_date(tags["date"])
+
+        ep_num = None
+        if sidecar.get("episode_number"):
+            try:
+                ep_num = int(sidecar["episode_number"])
+            except (ValueError, TypeError):
+                pass
+        if ep_num is None and tags.get("tracknumber"):
+            ep_num = _parse_tracknumber(tags["tracknumber"])
+        if ep_num is None:
+            ep_num = fn_info.get("episode_number")
+
+        # Already registered to an episode?
+        owning_ep = registered_paths.get(norm_path)
+        if owning_ep:
+            file_previews.append({
+                "path": audio_path,
+                "filename": os.path.basename(audio_path),
+                "title": title,
+                "date": published_at.strftime("%Y-%m-%d") if published_at else None,
+                "episode_number": ep_num,
+                "duration": duration,
+                "already_registered": True,
+                "match": {"episode_id": owning_ep.id, "episode_title": owning_ep.title,
+                          "confidence": 1.0, "method": "registered"},
+                "alternatives": [],
+            })
+            continue
+
+        # Score against unmatched candidates
+        available = [ep for ep in candidates if ep.id not in matched_ep_ids]
+        file_dur_s = _dur_seconds(duration)
+        scored = _match_to_episode_scored(sidecar, tags, fn_info, available, file_dur_s)
+
+        best_match = None
+        alternatives = []
+
+        if scored:
+            top_ep, top_conf, top_method = scored[0]
+            if top_conf >= 0.35:
+                best_match = {
+                    "episode_id": top_ep.id,
+                    "episode_title": top_ep.title,
+                    "confidence": round(top_conf, 2),
+                    "method": top_method,
+                }
+                matched_ep_ids.add(top_ep.id)
+
+            alternatives = [
+                {"episode_id": ep.id, "episode_title": ep.title,
+                 "confidence": round(conf, 2), "method": method}
+                for ep, conf, method in scored[1:4]
+                if conf >= 0.20 and ep.id not in matched_ep_ids
+            ]
+
+        file_previews.append({
+            "path": audio_path,
+            "filename": os.path.basename(audio_path),
+            "title": title,
+            "date": published_at.strftime("%Y-%m-%d") if published_at else None,
+            "episode_number": ep_num,
+            "duration": duration,
+            "already_registered": False,
+            "match": best_match,
+            "alternatives": alternatives,
+        })
+
+    n_registered = sum(1 for f in file_previews if f["already_registered"])
+    n_matched    = sum(1 for f in file_previews if not f["already_registered"] and f["match"])
+    n_unmatched  = sum(1 for f in file_previews if not f["already_registered"] and not f["match"])
+
+    return {
+        "files": file_previews,
+        "total_files": len(audio_files),
+        "matched": n_matched,
+        "unmatched": n_unmatched,
+        "registered": n_registered,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Staged import (commit phase)
+# ---------------------------------------------------------------------------
+
+def import_staged(feed_id: int, items: list, db: Session) -> dict:
+    """Execute an import using explicit file→episode mappings from the staging UI.
+
+    Each *item* dict has:
+      path           — audio file path
+      episode_id     — existing episode to link (None → create new)
+      skip           — if True, skip this file entirely
+      title          — optional title override (for new episodes or overwrites)
+      date           — optional date override "YYYY-MM-DD"
+      episode_number — optional episode number override
+    """
+    to_process = [item for item in items if not item.get("skip", False)]
+
+    _import_jobs[feed_id] = {
+        "status": "running", "total": len(to_process), "processed": 0,
+        "matched": 0, "created": 0, "renamed": 0, "errors": 0,
+        "message": "Starting import…",
+    }
+
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        _import_jobs[feed_id] = {"status": "error", "message": "Feed not found"}
+        return _import_jobs[feed_id]
+
+    primary_id = feed.primary_feed_id or feed.id
+    sub_ids = [r[0] for r in db.query(Feed.id).filter(Feed.primary_feed_id == primary_id).all()]
+    all_feed_ids = [primary_id] + sub_ids
+
+    matched = created = errors = 0
+
+    for item in to_process:
+        audio_path = item["path"]
+        episode_id = item.get("episode_id")
+
+        try:
+            if not os.path.exists(audio_path):
+                log.warning("Staged import: file not found: %s", audio_path)
+                errors += 1
+                _import_jobs[feed_id]["processed"] += 1
+                continue
+
+            if episode_id:
+                ep = db.query(Episode).filter(
+                    Episode.id == episode_id,
+                    Episode.feed_id.in_(all_feed_ids),
+                ).first()
+                if not ep:
+                    log.warning("Staged import: episode %d not found for feed %d", episode_id, feed_id)
+                    errors += 1
+                    _import_jobs[feed_id]["processed"] += 1
+                    continue
+                # Apply any user overrides to the matched episode
+                if item.get("title"):
+                    ep.title = item["title"]
+                if item.get("date"):
+                    ep.published_at = _parse_date(item["date"])
+                if item.get("episode_number") is not None:
+                    ep.episode_number = item["episode_number"]
+                matched += 1
+            else:
+                # Create a new episode from file metadata + overrides
+                stem = os.path.splitext(os.path.basename(audio_path))[0]
+                sidecar = _read_xml_sidecar(audio_path)
+                tags    = _read_id3_tags(audio_path)
+                fn_info = _parse_filename(stem)
+
+                title = (item.get("title") or sidecar.get("title") or
+                         tags.get("title") or fn_info.get("title") or stem).strip()
+                guid  = sidecar.get("guid") or "import:" + hashlib.sha256(audio_path.encode()).hexdigest()[:24]
+
+                ep_num = item.get("episode_number")
+                if ep_num is None and sidecar.get("episode_number"):
+                    try:
+                        ep_num = int(sidecar["episode_number"])
+                    except (ValueError, TypeError):
+                        pass
+                if ep_num is None and tags.get("tracknumber"):
+                    ep_num = _parse_tracknumber(tags["tracknumber"])
+                if ep_num is None:
+                    ep_num = fn_info.get("episode_number")
+
+                published_at: Optional[datetime] = None
+                date_is_approximate = False
+                if item.get("date"):
+                    published_at = _parse_date(item["date"])
+                if published_at is None and sidecar.get("published"):
+                    published_at = _parse_date(sidecar["published"])
+                    if published_at and _is_year_only(sidecar["published"]):
+                        date_is_approximate = True
+                if published_at is None and fn_info.get("date"):
+                    published_at = fn_info["date"]
+                if published_at is None and tags.get("date"):
+                    published_at = _parse_date(tags["date"])
+                    if published_at and _is_year_only(tags["date"]):
+                        date_is_approximate = True
+
+                duration = sidecar.get("duration") or tags.get("duration")
+
+                ep = Episode(
+                    feed_id             = feed_id,
+                    title               = title,
+                    guid                = guid,
+                    published_at        = published_at,
+                    date_is_approximate = date_is_approximate,
+                    duration            = duration,
+                    episode_number      = ep_num,
+                    enclosure_url       = sidecar.get("enclosure_url"),
+                    enclosure_type      = sidecar.get("enclosure_type"),
+                    author              = sidecar.get("author") or tags.get("artist"),
+                    description         = sidecar.get("description"),
+                    link                = sidecar.get("link"),
+                    episode_image_url   = sidecar.get("image_url"),
+                )
+                db.add(ep)
+                db.flush()
+                created += 1
+
+            # Mark as downloaded
+            ep.status            = "downloaded"
+            ep.file_path         = audio_path
+            ep.download_progress = 100
+            if os.path.exists(audio_path):
+                ep.file_size = os.path.getsize(audio_path)
+            if not ep.download_date:
+                try:
+                    ep.download_date = datetime.fromtimestamp(os.path.getmtime(audio_path))
+                except OSError:
+                    ep.download_date = datetime.utcnow()
+
+            db.commit()
+
+        except Exception as e:
+            log.error("Staged import error for %s: %s", audio_path, e)
+            errors += 1
+            try:
+                db.rollback()
+            except Exception:
+                pass
+
+        _import_jobs[feed_id]["processed"] += 1
+
+    # Recalculate sequential episode numbers
+    try:
+        from app.routers.episodes import recalc_seq_numbers
+        recalc_seq_numbers(primary_id, db)
+        db.commit()
+    except Exception as e:
+        log.warning("recalc_seq_numbers failed after staged import: %s", e)
+
+    # Interpolate dates for episodes without real date info
+    try:
+        interpolated = _interpolate_missing_dates(feed_id, db)
+        if interpolated:
+            log.info("Interpolated approximate dates for %d episode(s) in feed %d", interpolated, feed_id)
+    except Exception as e:
+        log.warning("Date interpolation failed for feed %d: %s", feed_id, e)
+
+    summary = {
+        "status":    "done",
+        "total":     len(to_process),
+        "processed": len(to_process),
+        "matched":   matched,
+        "created":   created,
+        "renamed":   0,
+        "errors":    errors,
+        "message": (
+            f"Import complete: {matched} linked to existing episodes, {created} new"
+            + (f", {errors} error{'s' if errors != 1 else ''}" if errors else "")
+        ),
+    }
+    _import_jobs[feed_id] = summary
+    log.info("Staged import feed %d: %s", feed_id, summary["message"])
+    return summary
+
+
+# ---------------------------------------------------------------------------
 # Main import function
 # ---------------------------------------------------------------------------
 

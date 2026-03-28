@@ -76,11 +76,9 @@ window._autoPlayNext = function (currentEpId) {
 // ============================================================
 // Refresh just the episode list without touching the rest of the page
 async function _refreshEpisodeList() {
-  const { id, feed, batch, showHidden, order } = window._epState || {};
+  const { id, feed, batch, order } = window._epState || {};
   if (!id) return;
-  const eps = await (showHidden
-    ? API.getFeedEpisodesWithHidden(id, batch, 0, order || "desc")
-    : API.getFeedEpisodes(id, batch, 0, order || "desc"));
+  const eps = await API.getFeedEpisodesWithHidden(id, batch, 0, order || "desc");
   window._epState.offset = eps.length;
   const list = document.getElementById("episode-list");
   if (list) list.innerHTML = eps.map((ep) => episodeRow(ep, feed)).join("");
@@ -161,34 +159,9 @@ async function _pollImportBanner(feedId) {
   }
 }
 
-// _wireShowHiddenBtn wires the "Show Hidden / Hide Hidden" toggle button.
-// Extracted so it can be called both during initial page setup and after the button
-// is dynamically injected by _syncHiddenBadge when the first episode is hidden.
-function _wireShowHiddenBtn() {
-  document.getElementById("btn-show-hidden")?.addEventListener("click", async () => {
-    const btn = document.getElementById("btn-show-hidden");
-    const state = window._epState;
-    state.showHidden = !state.showHidden;
-    btn.textContent = state.showHidden ? "Hide Hidden" : "Show Hidden";
-    const list = document.getElementById("episode-list");
-    if (!list) return;
-    list.innerHTML = `<div style="padding:12px;color:var(--text-3);font-size:13px">Loading…</div>`;
-    try {
-      const feed = state.feed || {};
-      const getter = state.showHidden
-        ? API.getFeedEpisodesWithHidden(state.id, state.batch, 0, state.order || "desc")
-        : API.getFeedEpisodes(state.id, state.batch, 0, state.order || "desc");
-      const eps = await getter;
-      state.offset = eps.length;
-      list.innerHTML = eps.map((ep) => episodeRow(ep, feed)).join("");
-    } catch (e) { Toast.error(e.message); }
-  });
-}
-
 // _syncHiddenBadge applies a count delta (+1 on hide, -1 on unhide) to the
-// "N hidden" badge and, when the count crosses zero in either direction, injects
-// or removes the badge element and the "Show Hidden" button so they are always in
-// sync with reality without requiring a full page reload.
+// "N hidden" badge.  Hidden episodes are always loaded and visible in the list
+// (grayed out); this badge is purely informational.
 function _syncHiddenBadge(delta) {
   const state = window._epState;
   if (!state?.feed) return;
@@ -200,21 +173,12 @@ function _syncHiddenBadge(delta) {
     if (badge) {
       badge.textContent = `${n} hidden`;
     } else {
-      // First hidden episode — inject the badge into the panel title and wire the button.
       document.querySelector("#episodes-panel .panel-header-title")
         ?.insertAdjacentHTML("beforeend",
           `<span class="badge badge-default" id="hidden-count-badge" style="opacity:0.6">${n} hidden</span>`);
-      if (!document.getElementById("btn-show-hidden")) {
-        document.getElementById("btn-bulk-select")
-          ?.insertAdjacentHTML("afterend",
-            `<button class="btn btn-ghost btn-sm" id="btn-show-hidden">Show Hidden</button>`);
-        _wireShowHiddenBtn();
-      }
     }
   } else {
-    // All episodes unhidden — remove badge and button.
     badge?.remove();
-    document.getElementById("btn-show-hidden")?.remove();
   }
 }
 
@@ -293,8 +257,8 @@ async function viewFeedDetail(feedId) {
     API.getSupplementary(id),
   ]);
   const EP_BATCH = settings.episode_page_size || 10000;
-  const episodes = await API.getFeedEpisodes(id, EP_BATCH, 0);
-  window._epState = { id, feed, offset: episodes.length, batch: EP_BATCH, showHidden: false, statusFilter: "all" };
+  const episodes = await API.getFeedEpisodesWithHidden(id, EP_BATCH, 0);
+  window._epState = { id, feed, offset: episodes.length, batch: EP_BATCH, statusFilter: "all" };
 
   // Store ID3 tag definitions globally so the tags modal can use them
   window._id3TagDefs = id3Tags;
@@ -353,13 +317,9 @@ async function viewFeedDetail(feedId) {
                   ${svg('<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>',  'width="14" height="14"')}
                   Import from Path…
                 </button>
-                ${feed.podcast_folder ? `<button id="btn-rescan-folder">
-                  ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/>',  'width="14" height="14"')}
-                  Rescan Folder
-                </button>` : ""}
                 <button id="btn-download-clean-rss">
                   ${svg('<path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/>',  'width="14" height="14"')}
-                  Download Complete RSS Feed Archive
+                  Export Complete RSS Feed Archive
                 </button>
               </div>
             </div>
@@ -637,6 +597,7 @@ async function viewFeedDetail(feedId) {
               <button class="ep-filter-pill" data-sf="unplayed">Unplayed</button>
               <button class="ep-filter-pill" data-sf="active">In Progress</button>
               <button class="ep-filter-pill" data-sf="failed">Failed</button>
+              <button class="ep-filter-pill" data-sf="hidden">Hidden</button>
             </div>
           </div>
           <div id="select-bar">
@@ -659,13 +620,9 @@ async function viewFeedDetail(feedId) {
           </div>
           <div class="episode-list" id="episode-list">
             ${episodes.length === 0
-              ? (feed.hidden_count > 0
-                  ? `<div class="empty-state"><div class="empty-state-icon">🙈</div>
-                     <div class="empty-state-title">All episodes are hidden</div>
-                     <div class="empty-state-desc">Click "Show Hidden" to reveal them.</div></div>`
-                  : `<div class="empty-state"><div class="empty-state-icon">${svg('<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>', 'style="width:40px;height:40px;display:block;margin:0 auto"')}</div>
-                     <div class="empty-state-title">No episodes found</div>
-                     <div class="empty-state-desc">Sync the feed to fetch episodes.</div></div>`)
+              ? `<div class="empty-state"><div class="empty-state-icon">${svg('<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>', 'style="width:40px;height:40px;display:block;margin:0 auto"')}</div>
+                 <div class="empty-state-title">No episodes found</div>
+                 <div class="empty-state-desc">Sync the feed to fetch episodes.</div></div>`
               : episodes.map((ep) => episodeRow(ep, feed)).join("")}
           </div>
           ${episodes.length >= EP_BATCH
@@ -726,10 +683,13 @@ async function viewFeedDetail(feedId) {
       const played =  row.dataset.played === "1";
       const textOk = !q || title.includes(q);
       let   sfOk   = true;
-      if      (sf === "downloaded") sfOk = status === "downloaded";
-      else if (sf === "unplayed")   sfOk = !played;
-      else if (sf === "active")     sfOk = status === "queued" || status === "downloading";
-      else if (sf === "failed")     sfOk = status === "failed";
+      const isHidden = row.dataset.hidden === "1";
+      if      (sf === "hidden")     sfOk = isHidden;
+      else if (sf === "downloaded") sfOk = !isHidden && status === "downloaded";
+      else if (sf === "unplayed")   sfOk = !isHidden && !played;
+      else if (sf === "active")     sfOk = !isHidden && (status === "queued" || status === "downloading");
+      else if (sf === "failed")     sfOk = !isHidden && status === "failed";
+      // "all" shows everything including hidden (they remain grayed out)
       const show = textOk && sfOk;
       row.style.display = show ? "" : "none";
       if (show) visible++;
@@ -764,9 +724,7 @@ async function viewFeedDetail(feedId) {
     btn.textContent = newOrder === "desc" ? "Sort Oldest First" : "Sort Newest First";
     btn.disabled = true;
     try {
-      const eps = await (window._epState.showHidden
-        ? API.getFeedEpisodesWithHidden(id, EP_BATCH, 0, newOrder)
-        : API.getFeedEpisodes(id, EP_BATCH, 0, newOrder));
+      const eps = await API.getFeedEpisodesWithHidden(id, EP_BATCH, 0, newOrder);
       window._epState.offset = eps.length;
       const list = document.getElementById("episode-list");
       if (list) list.innerHTML = eps.map((ep) => episodeRow(ep, feed)).join("");
@@ -894,23 +852,6 @@ async function viewFeedDetail(feedId) {
     showImportFilesModal(id, feed);
   });
 
-  document.getElementById("btn-rescan-folder")?.addEventListener("click", async () => {
-    document.getElementById("import-menu-wrap").removeAttribute("data-open");
-    const btn = document.getElementById("btn-rescan-folder");
-    btn.disabled = true;
-    btn.textContent = "Scanning…";
-    try {
-      await API.rescanFeed(id);
-      Toast.success("Folder rescan started — check the banner for progress.");
-      btn.disabled = false;
-      btn.textContent = "Rescan Folder";
-    } catch (err) {
-      Toast.error(err.message);
-      btn.disabled = false;
-      btn.textContent = "Rescan Folder";
-    }
-  });
-
   document.getElementById("btn-download-clean-rss").addEventListener("click", () => {
     document.getElementById("import-menu-wrap").removeAttribute("data-open");
     window.location.href = `/api/feeds/${id}/clean-rss`;
@@ -923,8 +864,6 @@ async function viewFeedDetail(feedId) {
   document.getElementById("btn-delete-feed").addEventListener("click", () => {
     showDeleteFeedModal(feed);
   });
-
-  _wireShowHiddenBtn();
 
   document.getElementById("btn-add-supplementary").addEventListener("click", async () => {
     const input = document.getElementById("supplementary-url-input");
@@ -1214,13 +1153,11 @@ async function viewFeedDetail(feedId) {
 
 
 async function loadMoreEpisodes() {
-  const { id, feed, offset, batch, showHidden, order } = window._epState;
+  const { id, feed, offset, batch, order } = window._epState;
   const btn = document.getElementById("btn-load-more-eps");
   if (btn) btn.textContent = "Loading…";
   try {
-    const more = showHidden
-      ? await API.getFeedEpisodesWithHidden(id, batch, offset, order || "desc")
-      : await API.getFeedEpisodes(id, batch, offset, order || "desc");
+    const more = await API.getFeedEpisodesWithHidden(id, batch, offset, order || "desc");
     const list = document.getElementById("episode-list");
     if (list) {
       list.insertAdjacentHTML("beforeend", more.map((ep) => episodeRow(ep, feed)).join(""));
@@ -1338,7 +1275,7 @@ function episodeRow(ep, feed) {
 
   // Build action buttons - delete/download depends on status
   let statusActionBtn = "";
-  if (ep.status === "pending" || ep.status === "failed") {
+  if ((ep.status === "pending" || ep.status === "failed") && ep.enclosure_url) {
     statusActionBtn = `<button class="btn btn-ghost btn-sm btn-icon" title="Download"
                                onclick="event.stopPropagation();queueEpisode(${ep.id})">
       ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}
@@ -1419,6 +1356,7 @@ function episodeRow(ep, feed) {
         ${ep.file_size ? `<span><span class="meta-label">Size</span> ${fmtBytes(ep.file_size)}</span>` : ""}
         ${statusBadge(ep.status)}
         ${ep.file_missing ? `<span class="badge badge-error" title="File was deleted from disk">File missing</span>` : ""}
+        ${!ep.enclosure_url && !isDownloaded ? `<span class="badge badge-default" title="No download URL available for this episode">No URL</span>` : ""}
         ${ep.error_message ? `<span style="color:var(--error)" title="${ep.error_message}">⚠ ${ep.error_message.slice(0,60)}</span>` : ""}
       </div>
       ${progressHTML}
@@ -1774,127 +1712,275 @@ function showUploadFeedXmlModal(feedId, feed) {
 }
 
 function showImportFilesModal(feedId, feed) {
-  const podcastFolder = feed?.podcast_folder || "";
-  const defaultDir = podcastFolder;
+  const defaultDir = feed?.podcast_folder || "";
 
-  Modal.open(
-    "Import Files",
-    `<div class="form-group">
-      <label class="form-label">Directory path</label>
-      <input class="form-control" id="import-dir-input" type="text"
-             value="${defaultDir}" placeholder="/path/to/audio/files" autofocus />
-      <div class="form-hint" id="import-dir-hint" style="margin-top:4px"></div>
-    </div>
-
-    <div id="import-options" style="border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:12px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;margin-bottom:8px">
-        <input type="checkbox" id="chk-import-rename" style="width:15px;height:15px;cursor:pointer" />
-        Rename &amp; organize files into the downloads folder
-      </label>
-      <div id="rename-subopts" style="padding-left:23px;display:none">
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2);margin-bottom:6px">
-          <input type="checkbox" id="chk-by-year" style="width:14px;height:14px;cursor:pointer" />
-          Organize into year subfolders
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2);margin-bottom:6px">
-          <input type="checkbox" id="chk-date-pfx" style="width:14px;height:14px;cursor:pointer" />
-          Include date prefix in filenames
-        </label>
-        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2);margin-bottom:0">
-          <input type="checkbox" id="chk-ep-pfx" style="width:14px;height:14px;cursor:pointer" />
-          Include episode number prefix in filenames
-        </label>
+  // ── Step 1: directory input ───────────────────────────────────
+  function showStep1(errorMsg) {
+    Modal.open(
+      "Import from Path",
+      `<div class="form-group">
+        <label class="form-label">Directory path</label>
+        <input class="form-control" id="import-dir-input" type="text"
+               value="${defaultDir}" placeholder="/path/to/audio/files" autofocus />
+        <div class="form-hint">Enter the folder containing your audio files. Subdirectories will be scanned recursively.</div>
       </div>
-    </div>
+      <div id="import-step1-error" style="color:var(--error);font-size:13px;${errorMsg ? "" : "display:none"}margin-bottom:8px">${errorMsg || ""}</div>
+      <div class="modal-actions">
+        <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+        <button class="btn btn-primary" id="btn-scan-dir">Scan Files</button>
+      </div>`,
+      (body) => {
+        const dirInput = body.querySelector("#import-dir-input");
+        const errEl    = body.querySelector("#import-step1-error");
+        const scanBtn  = body.querySelector("#btn-scan-dir");
 
-    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2);margin-bottom:12px" id="lbl-save-defaults">
-      <input type="checkbox" id="chk-save-defaults" checked style="width:14px;height:14px;cursor:pointer" />
-      Save these settings as defaults for this feed
-    </label>
-
-    <div id="import-modal-error" style="color:var(--error);font-size:13px;display:none;margin-bottom:8px"></div>
-    <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
-      <button class="btn btn-primary" id="btn-start-import">Start Import</button>
-    </div>`,
-    (body) => {
-      const btn        = body.querySelector("#btn-start-import");
-      const dirInput   = body.querySelector("#import-dir-input");
-      const hintEl     = body.querySelector("#import-dir-hint");
-      const errEl      = body.querySelector("#import-modal-error");
-      const chkRename  = body.querySelector("#chk-import-rename");
-      const subOpts    = body.querySelector("#rename-subopts");
-      const chkByYear  = body.querySelector("#chk-by-year");
-      const chkDatePfx = body.querySelector("#chk-date-pfx");
-      const chkEpPfx   = body.querySelector("#chk-ep-pfx");
-      const chkSave    = body.querySelector("#chk-save-defaults");
-      const lblSave    = body.querySelector("#lbl-save-defaults");
-
-      // Feed's current settings (fall back to true = global default)
-      const feedByYear  = feed?.organize_by_year    ?? null;
-      const feedDatePfx = feed?.filename_date_prefix ?? null;
-      const feedEpPfx   = feed?.filename_episode_number ?? null;
-
-      function updateHintAndDefaults() {
-        const dir = dirInput.value.trim();
-        const isOwnFolder = podcastFolder && (dir === podcastFolder || dir.startsWith(podcastFolder + "/") || dir.startsWith(podcastFolder + "\\"));
-        if (!dir) {
-          hintEl.textContent = "";
-          chkRename.checked = false;
-        } else if (isOwnFolder) {
-          hintEl.innerHTML = `<span style="color:var(--success)">✓ This is the podcast's download folder — files will be registered in place.</span>`;
-          chkRename.checked = false;
-        } else {
-          hintEl.innerHTML = `<span style="color:var(--text-3)">External path — files will be copied into the downloads folder if renaming is enabled.</span>`;
-          chkRename.checked = true;
+        async function doScan() {
+          const dir = dirInput.value.trim();
+          if (!dir) { dirInput.focus(); return; }
+          scanBtn.disabled = true;
+          scanBtn.textContent = "Scanning…";
+          errEl.style.display = "none";
+          try {
+            const preview = await API.previewImport(feedId, dir);
+            showStep2(dir, preview);
+          } catch (e) {
+            errEl.textContent = e.message;
+            errEl.style.display = "block";
+            scanBtn.disabled = false;
+            scanBtn.textContent = "Scan Files";
+          }
         }
-        subOpts.style.display = chkRename.checked ? "" : "none";
-        lblSave.style.display = chkRename.checked ? "" : "none";
+
+        scanBtn.addEventListener("click", doScan);
+        dirInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doScan(); });
       }
+    );
+  }
 
-      // Set sub-option checkboxes from feed settings
-      chkByYear.checked  = feedByYear  ?? true;
-      chkDatePfx.checked = feedDatePfx ?? true;
-      chkEpPfx.checked   = feedEpPfx   ?? true;
+  // ── Step 2: staging table ─────────────────────────────────────
+  async function showStep2(dir, preview) {
+    // Load all feed episodes for the match dropdowns
+    let allEpisodes = [];
+    try {
+      const eps = await API.getFeedEpisodes(feedId, 5000, 0, "asc");
+      allEpisodes = eps.items || eps || [];
+    } catch (_) {}
 
-      chkRename.addEventListener("change", () => {
-        subOpts.style.display = chkRename.checked ? "" : "none";
-        lblSave.style.display = chkRename.checked ? "" : "none";
-      });
+    const files        = preview.files || [];
+    const actionFiles  = files.filter(f => !f.already_registered);  // need attention
+    const regFiles     = files.filter(f => f.already_registered);   // already done
+    const nMatched     = actionFiles.filter(f => f.match).length;
+    const nNew         = actionFiles.filter(f => !f.match).length;
+    const nRegistered  = regFiles.length;
 
-      dirInput.addEventListener("input", updateHintAndDefaults);
-      updateHintAndDefaults();
+    // Build episode options HTML once, reused per row
+    const epOptionsHtml = allEpisodes.map(ep => {
+      const label = ep.title ? `#${ep.seq_number || "?"} — ${ep.title.substring(0, 60)}` : `Episode ${ep.id}`;
+      return `<option value="${ep.id}">${label}</option>`;
+    }).join("");
 
-      async function doImport() {
-        const dir = dirInput.value.trim();
-        if (!dir) { dirInput.focus(); return; }
-        const rename = chkRename.checked;
-        btn.disabled = true;
-        btn.textContent = "Starting…";
-        errEl.style.display = "none";
-        try {
-          await API.importFiles(feedId, dir, {
-            renameFiles:    rename,
-            organizeByYear: rename ? chkByYear.checked  : null,
-            datePrefix:     rename ? chkDatePfx.checked : null,
-            epNumPrefix:    rename ? chkEpPfx.checked   : null,
-            saveAsDefaults: rename && chkSave.checked,
-          });
-          Modal.close();
-          Toast.success("Import started — check the banner above the episode list for progress.");
-          _pollImportBanner(feedId);
-        } catch (e) {
-          errEl.textContent = e.message;
-          errEl.style.display = "block";
-          btn.disabled = false;
-          btn.textContent = "Start Import";
-        }
-      }
-
-      btn.addEventListener("click", doImport);
-      dirInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doImport(); });
+    // Per-row confidence badge
+    function confBadge(confidence) {
+      if (confidence == null) return "";
+      const pct = Math.round(confidence * 100);
+      const cls = pct >= 70 ? "badge-success" : pct >= 40 ? "badge-warning" : "badge-error";
+      return `<span class="badge ${cls}" title="Match confidence">${pct}%</span>`;
     }
-  );
+
+    // Build rows only for files that need action
+    const thTd = "position:sticky;top:0;padding:7px 10px;font-weight:600;background:var(--bg-3);box-shadow:0 1px 0 var(--border);z-index:1";
+    const rowsHtml = actionFiles.map((f, i) => {
+      const matchId   = f.match?.episode_id ?? "";
+      const conf      = f.match?.confidence ?? null;
+      const isMatched = !!f.match;
+      const statusDot = isMatched
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warning);flex-shrink:0" title="Matched to an existing episode"></span>`
+        : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0" title="No match found — will create a new episode"></span>`;
+      const infoLine = [f.date, f.episode_number ? `ep. ${f.episode_number}` : null, f.duration]
+        .filter(Boolean).join(" · ");
+      return `<tr id="import-row-${i}" data-path="${f.path.replace(/"/g, "&quot;")}">
+        <td style="padding:7px 10px;font-size:12px;max-width:220px">
+          <div style="display:flex;align-items:flex-start;gap:7px">
+            ${statusDot}
+            <div style="min-width:0">
+              <div style="word-break:break-all;line-height:1.3">${f.filename}</div>
+              ${f.title && f.title !== f.filename.replace(/\.[^.]+$/, "")
+                ? `<div style="color:var(--text-3);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${f.title.replace(/"/g, "&quot;")}">${f.title}</div>`
+                : ""}
+              ${infoLine ? `<div style="color:var(--text-3);font-size:11px;margin-top:1px">${infoLine}</div>` : ""}
+            </div>
+          </div>
+        </td>
+        <td style="padding:7px 10px">
+          <select class="form-control import-ep-select" style="font-size:12px;padding:3px 6px;width:100%" data-row="${i}">
+            <option value="">— Create new episode —</option>
+            ${allEpisodes.map(ep => {
+              const label = ep.title ? `#${ep.seq_number || "?"} — ${ep.title.substring(0, 55)}` : `Episode ${ep.id}`;
+              return `<option value="${ep.id}" ${ep.id == matchId ? "selected" : ""}>${label}</option>`;
+            }).join("")}
+          </select>
+          ${isMatched ? `<div class="import-conf-cell" style="margin-top:4px">${confBadge(conf)}</div>` : ""}
+        </td>
+        <td style="padding:7px 10px;text-align:center;white-space:nowrap">
+          <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2)">
+            <input type="checkbox" class="import-skip-chk" data-row="${i}" style="width:14px;height:14px" />
+            Skip
+          </label>
+        </td>
+      </tr>`;
+    }).join("");
+
+    // Summary stats row
+    const statPills = [
+      nMatched   > 0 ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:rgba(var(--warning-rgb,200,150,50),0.15);color:var(--warning);font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${nMatched} matched</span>` : "",
+      nNew       > 0 ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:rgba(var(--primary-rgb,80,130,220),0.15);color:var(--primary);font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${nNew} new</span>` : "",
+      nRegistered > 0 ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:rgba(var(--success-rgb,60,180,100),0.15);color:var(--success);font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${nRegistered} already imported</span>` : "",
+    ].filter(Boolean).join(" ");
+
+    // Guidance text based on state
+    let guidance = "";
+    if (actionFiles.length === 0 && nRegistered > 0) {
+      guidance = `All ${nRegistered} file${nRegistered !== 1 ? "s" : ""} in this folder are already imported. Nothing to do.`;
+    } else if (nMatched > 0 && nNew === 0) {
+      guidance = "All files were matched to existing episodes. Review the matches below — adjust any that look wrong — then click Import.";
+    } else if (nMatched === 0 && nNew > 0) {
+      guidance = "No files could be matched to existing episodes. They will each be added as a new episode. Use the dropdown to link a file to an existing episode if needed.";
+    } else if (nMatched > 0 && nNew > 0) {
+      guidance = `${nMatched} file${nMatched !== 1 ? "s" : ""} matched to existing episodes; ${nNew} could not be matched and will become new episodes. Review below and adjust as needed.`;
+    }
+
+    // Already-imported collapsible section
+    const regSection = nRegistered > 0 ? `
+      <details style="margin-top:10px">
+        <summary style="font-size:12px;color:var(--text-3);cursor:pointer;user-select:none;padding:4px 0">
+          ${nRegistered} file${nRegistered !== 1 ? "s" : ""} already imported (no action needed)
+        </summary>
+        <div style="margin-top:6px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
+          ${regFiles.map(f => `
+            <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-3)">
+              <span style="color:var(--success)">✓</span>
+              <span style="word-break:break-all">${f.filename}</span>
+              ${f.match?.episode_title ? `<span style="margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;flex-shrink:0" title="${f.match.episode_title.replace(/"/g, "&quot;")}">→ ${f.match.episode_title}</span>` : ""}
+            </div>`).join("")}
+        </div>
+      </details>` : "";
+
+    const importCount = actionFiles.length;
+    const importBtnLabel = importCount === 0
+      ? "Nothing to import"
+      : `Import ${importCount} file${importCount !== 1 ? "s" : ""}`;
+
+    const tableHtml = actionFiles.length === 0 ? "" :
+      `<div style="overflow-x:auto;max-height:min(52vh,500px);overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-top:10px">
+        <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:13px">
+          <thead>
+            <tr>
+              <th style="${thTd};text-align:left">File</th>
+              <th style="${thTd};text-align:left">Link to episode</th>
+              <th style="${thTd};text-align:center;white-space:nowrap">Skip?</th>
+            </tr>
+          </thead>
+          <tbody id="import-tbody">${rowsHtml}</tbody>
+        </table>
+      </div>`;
+
+    const noFilesMsg = files.length === 0
+      ? `<p style="text-align:center;color:var(--text-2);padding:24px 0">No audio files found in that directory.</p>`
+      : "";
+
+    Modal.open(
+      `Review & Import — ${files.length} file${files.length !== 1 ? "s" : ""} found`,
+      `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${statPills}</div>
+      ${guidance ? `<p style="font-size:13px;color:var(--text-2);margin:0 0 4px;line-height:1.5">${guidance}</p>` : ""}
+      ${noFilesMsg}
+      ${tableHtml}
+      ${regSection}
+      <div id="import-step2-error" style="color:var(--error);font-size:13px;display:none;margin-top:10px"></div>
+      <div class="modal-actions" style="margin-top:12px">
+        <button class="btn btn-ghost" id="btn-import-back">Back</button>
+        <button class="btn btn-primary" id="btn-commit-import" ${importCount === 0 ? "disabled" : ""}>
+          ${importBtnLabel}
+        </button>
+      </div>`,
+      (body) => {
+        document.getElementById("modal").classList.add("modal-wide");
+        body.querySelector("#btn-import-back").addEventListener("click", () => showStep1());
+
+        // Sync episode option availability across all dropdowns so no episode
+        // can be linked to more than one file at a time.
+        function syncEpisodeOptions() {
+          const selects = [...body.querySelectorAll(".import-ep-select")];
+          // Collect episode IDs that are currently claimed by some dropdown
+          const claimed = new Set(
+            selects.map(s => s.value).filter(v => v !== "")
+          );
+          selects.forEach(sel => {
+            for (const opt of sel.options) {
+              if (opt.value === "") continue;
+              // Disable if claimed by a *different* select
+              opt.disabled = claimed.has(opt.value) && opt.value !== sel.value;
+            }
+          });
+        }
+
+        // When match dropdown is changed manually, remove confidence badge and
+        // re-sync which episode options are available across all dropdowns.
+        body.querySelectorAll(".import-ep-select").forEach(sel => {
+          sel.addEventListener("change", () => {
+            const row = document.getElementById(`import-row-${sel.dataset.row}`);
+            const cell = row?.querySelector(".import-conf-cell");
+            if (cell) cell.innerHTML = "";
+            syncEpisodeOptions();
+          });
+        });
+
+        // Run once on open so pre-matched rows already block their episodes
+        syncEpisodeOptions();
+
+        const commitBtn = body.querySelector("#btn-commit-import");
+        const errEl     = body.querySelector("#import-step2-error");
+
+        function updateImportBtn() {
+          const n = body.querySelectorAll("#import-tbody .import-skip-chk:not(:checked)").length;
+          commitBtn.disabled = n === 0;
+          commitBtn.textContent = n === 0 ? "Nothing to import" : `Import ${n} file${n !== 1 ? "s" : ""}`;
+        }
+
+        body.querySelectorAll(".import-skip-chk").forEach(chk => {
+          chk.addEventListener("change", updateImportBtn);
+        });
+
+        commitBtn.addEventListener("click", async () => {
+          const items = [];
+          body.querySelectorAll("#import-tbody tr").forEach(row => {
+            if (row.querySelector(".import-skip-chk")?.checked) return; // skip excluded
+            const epIdVal = row.querySelector(".import-ep-select")?.value || "";
+            items.push({
+              path:       row.dataset.path,
+              skip:       false,
+              episode_id: epIdVal ? parseInt(epIdVal, 10) : null,
+            });
+          });
+
+          commitBtn.disabled = true;
+          commitBtn.textContent = "Importing…";
+          errEl.style.display = "none";
+          try {
+            await API.commitImport(feedId, items);
+            Modal.close();
+            Toast.success("Import started — check the banner above the episode list for progress.");
+            _pollImportBanner(feedId);
+          } catch (e) {
+            errEl.textContent = e.message;
+            errEl.style.display = "block";
+            updateImportBtn();
+          }
+        });
+      }
+    );
+  }
+
+  showStep1();
 }
 
 function updateEpisodeRow(ep) {

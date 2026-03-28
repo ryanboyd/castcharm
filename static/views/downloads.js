@@ -743,7 +743,7 @@ function renderDLRow(ep) {
     : "";
 
   let actionBtn = "";
-  if (ep.status === "pending" || ep.status === "failed") {
+  if ((ep.status === "pending" || ep.status === "failed") && ep.enclosure_url) {
     actionBtn = `<button class="btn btn-ghost btn-sm" onclick="queueEpisodeDL(${ep.id})">
       ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}
       Download
@@ -754,9 +754,9 @@ function renderDLRow(ep) {
     </button>`;
   } else if (ep.status === "failed") {
     actionBtn = `<div style="display:flex;gap:4px">
-      <button class="btn btn-ghost btn-sm" onclick="queueEpisodeDL(${ep.id})" title="Retry">
+      ${ep.enclosure_url ? `<button class="btn btn-ghost btn-sm" onclick="queueEpisodeDL(${ep.id})" title="Retry">
         ${svg('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>')}
-      </button>
+      </button>` : ""}
       <button class="btn btn-ghost btn-sm btn-icon" onclick="dismissEpisodeDL(${ep.id})" title="Remove">
         ${svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>')}
       </button>

@@ -198,7 +198,11 @@ def cancel_all(db: Session = Depends(get_db)):
 def queue_all_downloads(db: Session = Depends(get_db)):
     episodes = (
         db.query(Episode)
-        .filter(Episode.status.in_(["pending", "failed"]), Episode.hidden.is_(False))
+        .filter(
+            Episode.status.in_(["pending", "failed"]),
+            Episode.hidden.is_(False),
+            Episode.enclosure_url.isnot(None),
+        )
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())
         .all()
     )
@@ -222,6 +226,7 @@ def queue_unplayed_downloads(db: Session = Depends(get_db)):
             Episode.status.in_(["pending", "failed"]),
             Episode.hidden.is_(False),
             Episode.played.is_(False),
+            Episode.enclosure_url.isnot(None),
             (Episode.play_position_seconds == None) | (Episode.play_position_seconds == 0),
         )
         .order_by(Episode.published_at.desc().nullslast(), Episode.id.desc())

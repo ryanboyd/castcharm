@@ -116,15 +116,3 @@ def list_rss_sources():
     return RSS_SOURCES
 
 
-@router.post("/scan-folders")
-def scan_folders(db: Session = Depends(get_db)):
-    """Scan the downloads directory for podcast folders with no matching feed.
-
-    Creates a feed entry and queues an audio import for each orphan folder found.
-    Returns the number of new feeds discovered.
-    """
-    from app.startup_scan import scan_orphan_folders  # inline: circular import avoidance
-    log.info("Manual folder scan triggered")
-    created = scan_orphan_folders(db)
-    log.info("Folder scan complete: %d new feed(s) discovered", created)
-    return {"created": created}

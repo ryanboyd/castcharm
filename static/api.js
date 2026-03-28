@@ -9,14 +9,21 @@
 
 // We consolidate multipart form uploads into a shared helper so that
 // the fetch + error-extraction boilerplate isn't repeated for each endpoint.
-async function _upload(url, fieldName, file) {
+async function _upload(url, fieldName, file, extraFields) {
   const fd = new FormData();
   fd.append(fieldName, file);
+  if (extraFields) {
+    for (const [k, v] of Object.entries(extraFields)) fd.append(k, v);
+  }
   const res = await fetch(url, { method: "POST", body: fd });
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
-    try { const j = await res.json(); msg = j.detail || JSON.stringify(j); } catch (_) {}
-    throw new Error(msg);
+    let detail = null;
+    try { const j = await res.json(); detail = j.detail; } catch (_) {}
+    msg = typeof detail === "string" ? detail : (detail?.message || msg);
+    const err = new Error(msg);
+    if (detail && typeof detail === "object") Object.assign(err, detail);
+    throw err;
   }
   return res.json();
 }
@@ -34,11 +41,12 @@ const API = {
         window._onAuthRequired();
       }
       let msg = `HTTP ${res.status}`;
-      try {
-        const j = await res.json();
-        msg = j.detail || JSON.stringify(j);
-      } catch (_) {}
-      throw new Error(msg);
+      let detail = null;
+      try { const j = await res.json(); detail = j.detail; } catch (_) {}
+      msg = typeof detail === "string" ? detail : (detail?.message || msg);
+      const err = new Error(msg);
+      if (detail && typeof detail === "object") Object.assign(err, detail);
+      throw err;
     }
     if (res.status === 204) return null;
     return res.json();
@@ -53,7 +61,6 @@ const API = {
   putSettings:  (b) => API.put("/api/settings", b),
   getID3Tags:   () =>  API.get("/api/settings/id3-tags"),
   getRSSSources: () => API.get("/api/settings/rss-sources"),
-  scanFolders:  () =>  API.post("/api/settings/scan-folders"),
   getLogs: (limit = 500, level = null) => {
     const p = new URLSearchParams({ limit });
     if (level) p.set("level", level);
@@ -62,8 +69,9 @@ const API = {
 
   // ── Feeds ────────────────────────────────────────────────────
   getFeeds:     () =>         API.get("/api/feeds"),
-  addFeed:      (url, downloadAll = false) => API.post("/api/feeds", { url, download_all: downloadAll }),
-  addManualFeed: (title) =>   API.post("/api/feeds/manual", { title }),
+  addFeed:         (url, downloadAll = false, titleOverride = null) => API.post("/api/feeds", { url, download_all: downloadAll, title_override: titleOverride || undefined }),
+  addManualFeed:   (title) =>   API.post("/api/feeds/manual", { title }),
+  createFeedFromXml: (file, titleOverride) => _upload("/api/feeds/from-xml", "file", file, titleOverride ? { title_override: titleOverride } : null),
   getFeed:      (id) =>       API.get(`/api/feeds/${id}`),
   updateFeed:   (id, b) =>    API.put(`/api/feeds/${id}`, b),
   deleteFeed:   (id, deleteFiles = false) => API.delete(`/api/feeds/${id}?delete_files=${deleteFiles}`),
@@ -72,9 +80,10 @@ const API = {
   markAllPlayed: (id) =>      API.post(`/api/feeds/${id}/mark-all-played`),
   renumberFeed: (id) =>       API.post(`/api/feeds/${id}/renumber`),
   applyFileUpdates: (id) =>   API.post(`/api/feeds/${id}/apply-file-updates`),
-  rescanFeed:   (id) =>       API.post(`/api/feeds/${id}/rescan`),
   cleanupPreview: (id) =>     API.get(`/api/feeds/${id}/cleanup-preview`),
   getImportStatus: (id) =>    API.get(`/api/feeds/${id}/import-status`),
+  previewImport: (id, directory) => API.post(`/api/feeds/${id}/import-preview`, { directory }),
+  commitImport:  (id, items) =>     API.post(`/api/feeds/${id}/import-stage`, { items }),
   downloadAllFeed:      (id) => API.post(`/api/feeds/${id}/download-all`),
   downloadUnplayedFeed: (id) => API.post(`/api/feeds/${id}/download-unplayed`),
   getFeedEpisodes: (id, limit, offset, order = "desc") =>
@@ -85,15 +94,6 @@ const API = {
   getSupplementary:  (id) =>  API.get(`/api/feeds/${id}/supplementary`),
   addSupplementary:  (id, url) => API.post(`/api/feeds/${id}/supplementary`, { url }),
   removeSupplementary: (feedId, subId) => API.delete(`/api/feeds/${feedId}/supplementary/${subId}`),
-  importFiles: (id, directory, opts = {}) =>
-    API.post(`/api/feeds/${id}/import-files`, {
-      directory,
-      rename_files:     opts.renameFiles     ?? true,
-      organize_by_year: opts.organizeByYear  ?? null,
-      date_prefix:      opts.datePrefix      ?? null,
-      ep_num_prefix:    opts.epNumPrefix     ?? null,
-      save_as_defaults: opts.saveAsDefaults  ?? false,
-    }),
 
   // Cover art — upload uses multipart; removal uses DELETE
   uploadFeedCover: (id, file) => _upload(`/api/feeds/${id}/upload-cover`, "image", file),

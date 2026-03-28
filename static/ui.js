@@ -40,6 +40,7 @@ const Modal = {
   close() {
     document.getElementById("modal-overlay").classList.add("hidden");
     document.getElementById("modal-body").innerHTML = "";
+    document.getElementById("modal").classList.remove("modal-wide");
   },
 };
 
