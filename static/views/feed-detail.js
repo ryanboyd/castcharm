@@ -2136,98 +2136,274 @@ async function _xmlHandleResult(feedId, r) {
 function showImportFilesModal(feedId, feed) {
   const defaultDir = feed?.podcast_folder || "";
 
-  // ── Step 1: directory input ───────────────────────────────────
+  function _srcTag(source) {
+    if (!source) return "";
+    const labels = { sidecar: "XML", id3: "ID3", filename: "file", folder: "folder" };
+    return `<span class="import-source-tag src-${source}">${labels[source] || source}</span>`;
+  }
+
+  function _confBadge(confidence) {
+    if (confidence == null) return "";
+    const pct = Math.round(confidence * 100);
+    const cls = pct >= 70 ? "badge-success" : pct >= 40 ? "badge-warning" : "badge-error";
+    return `<span class="badge ${cls}" title="Match confidence">${pct}%</span>`;
+  }
+
+  // ── Step 1: folder picker ──────────────────────────────────────
   function showStep1(errorMsg) {
     Modal.open(
-      "Import from Path",
-      `<div class="form-group">
-        <label class="form-label">Directory path</label>
-        <input class="form-control" id="import-dir-input" type="text"
-               value="${defaultDir}" placeholder="/path/to/audio/files" autofocus />
-        <div class="form-hint">Enter the folder containing your audio files. Subdirectories will be scanned recursively.</div>
+      "Import Files",
+      `<p style="font-size:13px;color:var(--text-2);margin:0 0 12px;line-height:1.5">
+        Select the folder containing your audio files. All subfolders will be scanned.
+      </p>
+      <div class="form-group">
+        <div style="display:flex;gap:8px">
+          <input class="form-control" id="import-dir-input" type="text"
+                 value="${defaultDir}" placeholder="/path/to/audio/files"
+                 style="font-family:monospace;flex:1" autofocus />
+          <button class="btn btn-ghost" type="button" id="btn-dir-go">Go \u2192</button>
+        </div>
+        <div class="form-hint">Type a path and press <strong>Go \u2192</strong>, or click folders below to navigate.</div>
       </div>
-      <div id="import-step1-error" style="color:var(--error);font-size:13px;${errorMsg ? "" : "display:none"}margin-bottom:8px">${errorMsg || ""}</div>
-      <div class="modal-actions">
+      <div id="import-dir-browser" class="import-dir-browser"></div>
+      <div id="import-step1-error" style="color:var(--error);font-size:13px;margin-top:8px;${errorMsg ? "" : "display:none"}">${errorMsg || ""}</div>
+      <div class="modal-actions" style="margin-top:12px">
         <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
-        <button class="btn btn-primary" id="btn-scan-dir">Scan Files</button>
+        <button class="btn btn-primary" id="btn-scan-dir">Scan This Folder</button>
       </div>`,
       (body) => {
         const dirInput = body.querySelector("#import-dir-input");
         const errEl    = body.querySelector("#import-step1-error");
         const scanBtn  = body.querySelector("#btn-scan-dir");
+        const goBtn    = body.querySelector("#btn-dir-go");
+
+        // Load the directory browser
+        if (defaultDir) {
+          DirBrowser.load("import-dir-browser", "import-dir-input", defaultDir);
+        } else {
+          DirBrowser.load("import-dir-browser", "import-dir-input", "/");
+        }
+
+        goBtn.addEventListener("click", () => {
+          DirBrowser.load("import-dir-browser", "import-dir-input", dirInput.value.trim() || "/");
+        });
+        dirInput.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            DirBrowser.load("import-dir-browser", "import-dir-input", dirInput.value.trim() || "/");
+          }
+        });
 
         async function doScan() {
           const dir = dirInput.value.trim();
           if (!dir) { dirInput.focus(); return; }
           scanBtn.disabled = true;
-          scanBtn.textContent = "Scanning…";
+          scanBtn.textContent = "Scanning\u2026";
           errEl.style.display = "none";
           try {
             const preview = await API.previewImport(feedId, dir);
-            showStep2(dir, preview);
+            showStep2Summary(dir, preview);
           } catch (e) {
             errEl.textContent = e.message;
             errEl.style.display = "block";
             scanBtn.disabled = false;
-            scanBtn.textContent = "Scan Files";
+            scanBtn.textContent = "Scan This Folder";
           }
         }
-
         scanBtn.addEventListener("click", doScan);
-        dirInput.addEventListener("keydown", (e) => { if (e.key === "Enter") doScan(); });
       }
     );
   }
 
-  // ── Step 2: staging table ─────────────────────────────────────
-  async function showStep2(dir, preview) {
-    // Load all feed episodes for the match dropdowns
+  // ── Step 2: analysis summary ───────────────────────────────────
+  function showStep2Summary(dir, preview) {
+    const files       = preview.files || [];
+    const analysis    = preview.folder_analysis || {};
+    const actionFiles = files.filter(f => !f.already_registered);
+    const nMatched    = actionFiles.filter(f => f.match).length;
+    const nNew        = actionFiles.filter(f => !f.match).length;
+    const nRegistered = files.filter(f => f.already_registered).length;
+
+    // Confidence analysis
+    const matchConfs = actionFiles.filter(f => f.match).map(f => f.match.confidence);
+    const minConf = matchConfs.length ? Math.min(...matchConfs) : 0;
+    const allHighConf = matchConfs.length > 0 && minConf >= 0.70 && nNew === 0;
+    const hasLowConf = matchConfs.some(c => c < 0.40);
+
+    // Folder type banner
+    let bannerHtml = "";
+    const ft = analysis.type;
+    if (ft === "castcharm") {
+      bannerHtml = `<div class="import-analysis-banner banner-castcharm">
+        CastCharm folder detected \u2014 XML sidecars found, matching will be very accurate.</div>`;
+    } else if (ft === "year_organized") {
+      bannerHtml = `<div class="import-analysis-banner banner-year">
+        Year-organized folder detected \u2014 dates extracted from folder names.</div>`;
+    } else if (ft === "season_organized") {
+      bannerHtml = `<div class="import-analysis-banner banner-season">
+        Season-organized folder detected \u2014 season numbers extracted from folder names.</div>`;
+    }
+
+    // Confidence text
+    let confText = "";
+    if (allHighConf) {
+      confText = `<p style="font-size:13px;color:var(--success);margin:0 0 4px;line-height:1.5">All matches are high confidence. You can import directly or review details first.</p>`;
+    } else if (hasLowConf) {
+      confText = `<p style="font-size:13px;color:var(--warning);margin:0 0 4px;line-height:1.5">Some matches have low confidence \u2014 review recommended before importing.</p>`;
+    } else if (nMatched > 0) {
+      confText = `<p style="font-size:13px;color:var(--text-2);margin:0 0 4px;line-height:1.5">Review the matched files to confirm they look correct.</p>`;
+    }
+
+    // If everything is new or nothing to do, skip summary and go straight to review
+    if (nMatched === 0 && nNew > 0) {
+      showStep3Review(dir, preview);
+      return;
+    }
+
+    const subfolderNote = analysis.subfolder_count > 0
+      ? ` across ${analysis.subfolder_count} subfolder${analysis.subfolder_count !== 1 ? "s" : ""}`
+      : "";
+
+    // Nothing to import?
+    if (actionFiles.length === 0 && nRegistered > 0) {
+      Modal.open(
+        "Import Files \u2014 Nothing to Do",
+        `<p style="font-size:13px;color:var(--text-2);line-height:1.5;margin-bottom:16px">
+          All ${nRegistered} file${nRegistered !== 1 ? "s" : ""} in this folder are already imported.
+        </p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btn-import-back">\u2190 Back</button>
+          <button class="btn btn-primary" onclick="Modal.close()">Done</button>
+        </div>`,
+        (body) => {
+          body.querySelector("#btn-import-back").addEventListener("click", () => showStep1());
+        }
+      );
+      return;
+    }
+
+    if (files.length === 0) {
+      Modal.open(
+        "Import Files \u2014 No Files Found",
+        `<p style="text-align:center;color:var(--text-2);padding:24px 0">No audio files found in that directory.</p>
+        <div class="modal-actions">
+          <button class="btn btn-ghost" id="btn-import-back">\u2190 Back</button>
+        </div>`,
+        (body) => {
+          body.querySelector("#btn-import-back").addEventListener("click", () => showStep1());
+        }
+      );
+      return;
+    }
+
+    Modal.open(
+      "Import Files \u2014 Analysis",
+      `<div style="font-size:13px;color:var(--text-3);margin-bottom:10px;font-family:monospace;word-break:break-all">${escHTML(dir)}</div>
+      <p style="font-size:13px;color:var(--text-2);margin:0 0 12px;line-height:1.5">
+        Found <strong>${preview.total_files}</strong> audio file${preview.total_files !== 1 ? "s" : ""}${subfolderNote}.
+      </p>
+      ${bannerHtml}
+      <div class="import-stat-cards">
+        ${nMatched > 0 ? `<div class="import-stat-card">
+          <div class="stat-num" style="color:var(--warning)">${nMatched}</div>
+          <div class="stat-label">matched</div>
+        </div>` : ""}
+        ${nNew > 0 ? `<div class="import-stat-card">
+          <div class="stat-num" style="color:var(--primary)">${nNew}</div>
+          <div class="stat-label">new</div>
+        </div>` : ""}
+        ${nRegistered > 0 ? `<div class="import-stat-card">
+          <div class="stat-num" style="color:var(--success)">${nRegistered}</div>
+          <div class="stat-label">already imported</div>
+        </div>` : ""}
+      </div>
+      ${confText}
+      <div class="modal-actions" style="margin-top:16px">
+        <button class="btn btn-ghost" id="btn-import-back">\u2190 Back</button>
+        <button class="btn btn-ghost" id="btn-review-details">Review Details</button>
+        ${allHighConf ? `<button class="btn btn-primary" id="btn-import-all">Import All \u2192</button>` : `<button class="btn btn-primary" id="btn-review-details-primary">Review & Import</button>`}
+      </div>`,
+      (body) => {
+        body.querySelector("#btn-import-back").addEventListener("click", () => showStep1());
+        body.querySelector("#btn-review-details")?.addEventListener("click", () => showStep3Review(dir, preview));
+
+        const primaryReview = body.querySelector("#btn-review-details-primary");
+        if (primaryReview) primaryReview.addEventListener("click", () => showStep3Review(dir, preview));
+
+        const importAllBtn = body.querySelector("#btn-import-all");
+        if (importAllBtn) {
+          importAllBtn.addEventListener("click", async () => {
+            importAllBtn.disabled = true;
+            importAllBtn.textContent = "Importing\u2026";
+            try {
+              const items = actionFiles.map(f => ({
+                path: f.path,
+                skip: false,
+                episode_id: f.match?.episode_id || null,
+              }));
+              await API.commitImport(feedId, items);
+              Modal.close();
+              Toast.success("Import started \u2014 check the banner above the episode list for progress.");
+              _pollImportBanner(feedId);
+            } catch (e) {
+              Toast.error(e.message);
+              importAllBtn.disabled = false;
+              importAllBtn.textContent = "Import All \u2192";
+            }
+          });
+        }
+      }
+    );
+  }
+
+  // ── Step 3: review table ───────────────────────────────────────
+  async function showStep3Review(dir, preview) {
     let allEpisodes = [];
     try {
       const eps = await API.getFeedEpisodes(feedId, 5000, 0, "asc");
       allEpisodes = eps.items || eps || [];
     } catch (_) {}
 
-    const files        = preview.files || [];
-    const actionFiles  = files.filter(f => !f.already_registered);  // need attention
-    const regFiles     = files.filter(f => f.already_registered);   // already done
-    const nMatched     = actionFiles.filter(f => f.match).length;
-    const nNew         = actionFiles.filter(f => !f.match).length;
-    const nRegistered  = regFiles.length;
+    const files       = preview.files || [];
+    const actionFiles = files.filter(f => !f.already_registered);
+    const regFiles    = files.filter(f => f.already_registered);
+    const nRegistered = regFiles.length;
 
-    // Build episode options HTML once, reused per row
-    const epOptionsHtml = allEpisodes.map(ep => {
-      const label = ep.title ? `#${ep.seq_number || "?"} — ${ep.title.substring(0, 60)}` : `Episode ${ep.id}`;
-      return `<option value="${ep.id}">${label}</option>`;
-    }).join("");
+    // Categorize for filter tabs
+    const needsReview = actionFiles.filter(f => f.match && f.match.confidence < 0.70);
+    const highConf    = actionFiles.filter(f => f.match && f.match.confidence >= 0.70);
+    const newEps      = actionFiles.filter(f => !f.match);
 
-    // Per-row confidence badge
-    function confBadge(confidence) {
-      if (confidence == null) return "";
-      const pct = Math.round(confidence * 100);
-      const cls = pct >= 70 ? "badge-success" : pct >= 40 ? "badge-warning" : "badge-error";
-      return `<span class="badge ${cls}" title="Match confidence">${pct}%</span>`;
-    }
+    // Sort: low confidence first, then new, then high confidence
+    const sortedFiles = [...needsReview, ...newEps, ...highConf];
 
-    // Build rows only for files that need action
     const thTd = "position:sticky;top:0;padding:7px 10px;font-weight:600;background:var(--bg-3);box-shadow:0 1px 0 var(--border);z-index:1";
-    const rowsHtml = actionFiles.map((f, i) => {
+
+    function buildRow(f, i) {
       const matchId   = f.match?.episode_id ?? "";
       const conf      = f.match?.confidence ?? null;
       const isMatched = !!f.match;
+      const src       = f.metadata_sources || {};
       const statusDot = isMatched
-        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warning);flex-shrink:0" title="Matched to an existing episode"></span>`
-        : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0" title="No match found — will create a new episode"></span>`;
-      const infoLine = [f.date, f.episode_number ? `ep. ${f.episode_number}` : null, f.duration]
-        .filter(Boolean).join(" · ");
-      return `<tr id="import-row-${i}" data-path="${f.path.replace(/"/g, "&quot;")}">
+        ? `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--warning);flex-shrink:0" title="Matched to existing episode"></span>`
+        : `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--primary);flex-shrink:0" title="New episode"></span>`;
+      const infoParts = [];
+      if (f.date) infoParts.push(f.date + (f.date_is_approximate ? " ~" : "") + _srcTag(src.date));
+      if (f.episode_number != null) infoParts.push(`ep. ${f.episode_number}` + _srcTag(src.episode_number));
+      if (f.season_number != null) infoParts.push(`S${f.season_number}` + _srcTag(src.season_number));
+      if (f.duration) infoParts.push(f.duration);
+      const infoLine = infoParts.join(" \u00B7 ");
+      const titleSrc = _srcTag(src.title);
+
+      return `<tr id="import-row-${i}" data-path="${f.path.replace(/"/g, "&quot;")}"
+        data-conf="${conf ?? -1}" data-has-match="${isMatched ? 1 : 0}">
         <td style="padding:7px 10px;font-size:12px;max-width:220px">
           <div style="display:flex;align-items:flex-start;gap:7px">
             ${statusDot}
             <div style="min-width:0">
               <div style="word-break:break-all;line-height:1.3">${f.filename}</div>
               ${f.title && f.title !== f.filename.replace(/\.[^.]+$/, "")
-                ? `<div style="color:var(--text-3);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${f.title.replace(/"/g, "&quot;")}">${f.title}</div>`
+                ? `<div style="color:var(--text-3);font-size:11px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${f.title.replace(/"/g, "&quot;")}">${f.title}${titleSrc}</div>`
                 : ""}
               ${infoLine ? `<div style="color:var(--text-3);font-size:11px;margin-top:1px">${infoLine}</div>` : ""}
             </div>
@@ -2235,13 +2411,13 @@ function showImportFilesModal(feedId, feed) {
         </td>
         <td style="padding:7px 10px">
           <select class="form-control import-ep-select" style="font-size:12px;padding:3px 6px;width:100%" data-row="${i}">
-            <option value="">— Create new episode —</option>
+            <option value="">\u2014 Create new episode \u2014</option>
             ${allEpisodes.map(ep => {
-              const label = ep.title ? `#${ep.seq_number || "?"} — ${ep.title.substring(0, 55)}` : `Episode ${ep.id}`;
+              const label = ep.title ? `#${ep.seq_number || "?"} \u2014 ${ep.title.substring(0, 55)}` : `Episode ${ep.id}`;
               return `<option value="${ep.id}" ${ep.id == matchId ? "selected" : ""}>${label}</option>`;
             }).join("")}
           </select>
-          ${isMatched ? `<div class="import-conf-cell" style="margin-top:4px">${confBadge(conf)}</div>` : ""}
+          ${isMatched ? `<div class="import-conf-cell" style="margin-top:4px">${_confBadge(conf)}</div>` : ""}
         </td>
         <td style="padding:7px 10px;text-align:center;white-space:nowrap">
           <label style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--text-2)">
@@ -2250,26 +2426,9 @@ function showImportFilesModal(feedId, feed) {
           </label>
         </td>
       </tr>`;
-    }).join("");
-
-    // Summary stats row
-    const statPills = [
-      nMatched   > 0 ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:rgba(var(--warning-rgb,200,150,50),0.15);color:var(--warning);font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${nMatched} matched</span>` : "",
-      nNew       > 0 ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:rgba(var(--primary-rgb,80,130,220),0.15);color:var(--primary);font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${nNew} new</span>` : "",
-      nRegistered > 0 ? `<span style="display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;background:rgba(var(--success-rgb,60,180,100),0.15);color:var(--success);font-size:12px;font-weight:600"><span style="width:7px;height:7px;border-radius:50%;background:currentColor;display:inline-block"></span>${nRegistered} already imported</span>` : "",
-    ].filter(Boolean).join(" ");
-
-    // Guidance text based on state
-    let guidance = "";
-    if (actionFiles.length === 0 && nRegistered > 0) {
-      guidance = `All ${nRegistered} file${nRegistered !== 1 ? "s" : ""} in this folder are already imported. Nothing to do.`;
-    } else if (nMatched > 0 && nNew === 0) {
-      guidance = "All files were matched to existing episodes. Review the matches below — adjust any that look wrong — then click Import.";
-    } else if (nMatched === 0 && nNew > 0) {
-      guidance = "No files could be matched to existing episodes. They will each be added as a new episode. Use the dropdown to link a file to an existing episode if needed.";
-    } else if (nMatched > 0 && nNew > 0) {
-      guidance = `${nMatched} file${nMatched !== 1 ? "s" : ""} matched to existing episodes; ${nNew} could not be matched and will become new episodes. Review below and adjust as needed.`;
     }
+
+    const rowsHtml = sortedFiles.map((f, i) => buildRow(f, i)).join("");
 
     // Already-imported collapsible section
     const regSection = nRegistered > 0 ? `
@@ -2280,9 +2439,9 @@ function showImportFilesModal(feedId, feed) {
         <div style="margin-top:6px;border:1px solid var(--border);border-radius:6px;overflow:hidden">
           ${regFiles.map(f => `
             <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;border-bottom:1px solid var(--border);font-size:12px;color:var(--text-3)">
-              <span style="color:var(--success)">✓</span>
+              <span style="color:var(--success)">\u2713</span>
               <span style="word-break:break-all">${f.filename}</span>
-              ${f.match?.episode_title ? `<span style="margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;flex-shrink:0" title="${f.match.episode_title.replace(/"/g, "&quot;")}">→ ${f.match.episode_title}</span>` : ""}
+              ${f.match?.episode_title ? `<span style="margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px;flex-shrink:0" title="${f.match.episode_title.replace(/"/g, "&quot;")}">\u2192 ${f.match.episode_title}</span>` : ""}
             </div>`).join("")}
         </div>
       </details>` : "";
@@ -2292,8 +2451,27 @@ function showImportFilesModal(feedId, feed) {
       ? "Nothing to import"
       : `Import ${importCount} file${importCount !== 1 ? "s" : ""}`;
 
+    // Filter tabs
+    const tabDefs = [
+      { id: "all", label: `All (${actionFiles.length})`, filter: () => true },
+      needsReview.length > 0 ? { id: "review", label: `Needs Review (${needsReview.length})`, filter: (tr) => tr.dataset.hasMatch === "1" && parseFloat(tr.dataset.conf) < 0.70 } : null,
+      highConf.length > 0 ? { id: "high", label: `High Confidence (${highConf.length})`, filter: (tr) => tr.dataset.hasMatch === "1" && parseFloat(tr.dataset.conf) >= 0.70 } : null,
+      newEps.length > 0 ? { id: "new", label: `New (${newEps.length})`, filter: (tr) => tr.dataset.hasMatch === "0" } : null,
+    ].filter(Boolean);
+
+    const defaultTab = needsReview.length > 0 ? "review" : "all";
+    const tabsHtml = tabDefs.map(t =>
+      `<span class="import-filter-tab${t.id === defaultTab ? " active" : ""}" data-tab="${t.id}">${t.label}</span>`
+    ).join("");
+
+    // Bulk action buttons
+    const bulkHtml = `<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+      ${newEps.length > 0 ? `<button class="btn btn-ghost" id="btn-skip-unmatched" style="font-size:11px;padding:4px 10px">Skip all unmatched</button>` : ""}
+      ${needsReview.length > 0 ? `<button class="btn btn-ghost" id="btn-skip-low-conf" style="font-size:11px;padding:4px 10px">Skip low confidence</button>` : ""}
+    </div>`;
+
     const tableHtml = actionFiles.length === 0 ? "" :
-      `<div style="overflow-x:auto;max-height:min(52vh,500px);overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-top:10px">
+      `<div style="overflow-x:auto;max-height:min(52vh,500px);overflow-y:auto;border:1px solid var(--border);border-radius:6px;margin-top:6px">
         <table style="width:100%;border-collapse:separate;border-spacing:0;font-size:13px">
           <thead>
             <tr>
@@ -2306,47 +2484,57 @@ function showImportFilesModal(feedId, feed) {
         </table>
       </div>`;
 
-    const noFilesMsg = files.length === 0
-      ? `<p style="text-align:center;color:var(--text-2);padding:24px 0">No audio files found in that directory.</p>`
-      : "";
-
     Modal.open(
-      `Review & Import — ${files.length} file${files.length !== 1 ? "s" : ""} found`,
-      `<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">${statPills}</div>
-      ${guidance ? `<p style="font-size:13px;color:var(--text-2);margin:0 0 4px;line-height:1.5">${guidance}</p>` : ""}
-      ${noFilesMsg}
+      `Review & Import \u2014 ${files.length} file${files.length !== 1 ? "s" : ""} found`,
+      `<div class="import-filter-tabs">${tabsHtml}</div>
+      ${bulkHtml}
       ${tableHtml}
       ${regSection}
-      <div id="import-step2-error" style="color:var(--error);font-size:13px;display:none;margin-top:10px"></div>
+      <div id="import-step3-error" style="color:var(--error);font-size:13px;display:none;margin-top:10px"></div>
       <div class="modal-actions" style="margin-top:12px">
-        <button class="btn btn-ghost" id="btn-import-back">Back</button>
+        <button class="btn btn-ghost" id="btn-import-back">\u2190 Back</button>
         <button class="btn btn-primary" id="btn-commit-import" ${importCount === 0 ? "disabled" : ""}>
           ${importBtnLabel}
         </button>
       </div>`,
       (body) => {
         document.getElementById("modal").classList.add("modal-wide");
-        body.querySelector("#btn-import-back").addEventListener("click", () => showStep1());
+        body.querySelector("#btn-import-back").addEventListener("click", () => showStep2Summary(dir, preview));
 
-        // Sync episode option availability across all dropdowns so no episode
-        // can be linked to more than one file at a time.
+        // Filter tabs
+        const filterMap = {};
+        tabDefs.forEach(t => { filterMap[t.id] = t.filter; });
+        body.querySelectorAll(".import-filter-tab").forEach(tab => {
+          tab.addEventListener("click", () => {
+            body.querySelectorAll(".import-filter-tab").forEach(t => t.classList.remove("active"));
+            tab.classList.add("active");
+            const filterFn = filterMap[tab.dataset.tab];
+            body.querySelectorAll("#import-tbody tr").forEach(tr => {
+              tr.style.display = filterFn(tr) ? "" : "none";
+            });
+          });
+        });
+
+        // Apply default tab filter
+        if (defaultTab !== "all") {
+          const filterFn = filterMap[defaultTab];
+          body.querySelectorAll("#import-tbody tr").forEach(tr => {
+            tr.style.display = filterFn(tr) ? "" : "none";
+          });
+        }
+
+        // Sync episode option availability across all dropdowns
         function syncEpisodeOptions() {
           const selects = [...body.querySelectorAll(".import-ep-select")];
-          // Collect episode IDs that are currently claimed by some dropdown
-          const claimed = new Set(
-            selects.map(s => s.value).filter(v => v !== "")
-          );
+          const claimed = new Set(selects.map(s => s.value).filter(v => v !== ""));
           selects.forEach(sel => {
             for (const opt of sel.options) {
               if (opt.value === "") continue;
-              // Disable if claimed by a *different* select
               opt.disabled = claimed.has(opt.value) && opt.value !== sel.value;
             }
           });
         }
 
-        // When match dropdown is changed manually, remove confidence badge and
-        // re-sync which episode options are available across all dropdowns.
         body.querySelectorAll(".import-ep-select").forEach(sel => {
           sel.addEventListener("change", () => {
             const row = document.getElementById(`import-row-${sel.dataset.row}`);
@@ -2355,12 +2543,10 @@ function showImportFilesModal(feedId, feed) {
             syncEpisodeOptions();
           });
         });
-
-        // Run once on open so pre-matched rows already block their episodes
         syncEpisodeOptions();
 
         const commitBtn = body.querySelector("#btn-commit-import");
-        const errEl     = body.querySelector("#import-step2-error");
+        const errEl     = body.querySelector("#import-step3-error");
 
         function updateImportBtn() {
           const n = body.querySelectorAll("#import-tbody .import-skip-chk:not(:checked)").length;
@@ -2372,10 +2558,30 @@ function showImportFilesModal(feedId, feed) {
           chk.addEventListener("change", updateImportBtn);
         });
 
+        // Bulk skip buttons
+        body.querySelector("#btn-skip-unmatched")?.addEventListener("click", () => {
+          body.querySelectorAll("#import-tbody tr").forEach(tr => {
+            if (tr.dataset.hasMatch === "0") {
+              const chk = tr.querySelector(".import-skip-chk");
+              if (chk) chk.checked = true;
+            }
+          });
+          updateImportBtn();
+        });
+        body.querySelector("#btn-skip-low-conf")?.addEventListener("click", () => {
+          body.querySelectorAll("#import-tbody tr").forEach(tr => {
+            if (tr.dataset.hasMatch === "1" && parseFloat(tr.dataset.conf) < 0.40) {
+              const chk = tr.querySelector(".import-skip-chk");
+              if (chk) chk.checked = true;
+            }
+          });
+          updateImportBtn();
+        });
+
         commitBtn.addEventListener("click", async () => {
           const items = [];
           body.querySelectorAll("#import-tbody tr").forEach(row => {
-            if (row.querySelector(".import-skip-chk")?.checked) return; // skip excluded
+            if (row.querySelector(".import-skip-chk")?.checked) return;
             const epIdVal = row.querySelector(".import-ep-select")?.value || "";
             items.push({
               path:       row.dataset.path,
@@ -2385,12 +2591,12 @@ function showImportFilesModal(feedId, feed) {
           });
 
           commitBtn.disabled = true;
-          commitBtn.textContent = "Importing…";
+          commitBtn.textContent = "Importing\u2026";
           errEl.style.display = "none";
           try {
             await API.commitImport(feedId, items);
             Modal.close();
-            Toast.success("Import started — check the banner above the episode list for progress.");
+            Toast.success("Import started \u2014 check the banner above the episode list for progress.");
             _pollImportBanner(feedId);
           } catch (e) {
             errEl.textContent = e.message;

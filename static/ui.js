@@ -343,3 +343,37 @@ function wireSyncAllBtn(selector) {
     }
   });
 }
+
+// ============================================================
+// Directory browser component (reusable folder picker)
+// ============================================================
+const DirBrowser = {
+  async load(containerId, inputId, path) {
+    const el = document.getElementById(containerId);
+    const input = document.getElementById(inputId);
+    if (!el) return;
+    el.innerHTML = `<div style="padding:8px 12px;color:var(--text-3);font-size:12px">Loading\u2026</div>`;
+    try {
+      const data = await API.browseDirs(path || "/");
+      if (input) input.value = data.path;
+      const rows = [];
+      if (data.parent !== null) {
+        rows.push(`<div class="dir-entry dir-up" data-path="${data.parent}">
+          <span class="dir-icon">\u2191</span><span>..</span></div>`);
+      }
+      for (const entry of data.entries) {
+        rows.push(`<div class="dir-entry" data-path="${entry.path}">
+          <span class="dir-icon">\uD83D\uDCC1</span><span>${escHTML(entry.name)}</span></div>`);
+      }
+      if (!data.entries.length && data.parent === null) {
+        rows.push(`<div style="padding:8px 12px;color:var(--text-3);font-size:12px">No subdirectories</div>`);
+      }
+      el.innerHTML = `<div class="dir-browser-path">${escHTML(data.path)}</div>${rows.join("")}`;
+      el.querySelectorAll(".dir-entry[data-path]").forEach(div => {
+        div.addEventListener("click", () => DirBrowser.load(containerId, inputId, div.dataset.path));
+      });
+    } catch (err) {
+      el.innerHTML = `<div style="padding:8px 12px;color:var(--error);font-size:12px">${escHTML(err.message)}</div>`;
+    }
+  }
+};

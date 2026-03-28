@@ -260,6 +260,7 @@ class ImportStageItem(BaseModel):
     title: Optional[str] = None        # override detected title
     date: Optional[str] = None         # override date (YYYY-MM-DD)
     episode_number: Optional[int] = None
+    season_number: Optional[int] = None
 
 
 class ImportStageRequest(BaseModel):

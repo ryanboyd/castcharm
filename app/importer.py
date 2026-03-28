@@ -103,28 +103,38 @@ def _read_id3_tags(audio_path: str) -> dict:
 # ---------------------------------------------------------------------------
 
 _FN_PATTERNS = [
+    # S01E05 - Podcast Name - Title
+    re.compile(r"^[Ss](?P<season>\d{1,2})[Ee](?P<epnum>\d{1,3})\s*[-–—]\s*(?P<podcast>.+?)\s*[-–—]\s*(?P<title>.+)$"),
+    # S01E05 - Title
+    re.compile(r"^[Ss](?P<season>\d{1,2})[Ee](?P<epnum>\d{1,3})\s*[-–—]\s*(?P<title>.+)$"),
+    # S01E05Title (no separator)
+    re.compile(r"^[Ss](?P<season>\d{1,2})[Ee](?P<epnum>\d{1,3})(?P<title>.+)$"),
     # YYYY-MM-DD - ### - Title
-    re.compile(r"^(\d{4}-\d{2}-\d{2})\s*[-–—]\s*(\d+)\s*[-–—]\s*(.+)$"),
+    re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})\s*[-–—]\s*(?P<epnum>\d+)\s*[-–—]\s*(?P<title>.+)$"),
     # YYYY-MM-DD - Title
-    re.compile(r"^(\d{4}-\d{2}-\d{2})\s*[-–—]\s*(.+)$"),
-    # ### - Title  (1-4 leading digits)
-    re.compile(r"^(\d{1,4})\s*[-–—]\s*(.+)$"),
+    re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})\s*[-–—]\s*(?P<title>.+)$"),
+    # ### - Podcast Name - Title (number + two dashes)
+    re.compile(r"^(?P<epnum>\d{1,4})\s*[-–—]\s*.+?\s*[-–—]\s*(?P<title>.+)$"),
+    # ### - Title (1-4 leading digits)
+    re.compile(r"^(?P<epnum>\d{1,4})\s*[-–—]\s*(?P<title>.+)$"),
     # "Episode N - Title" / "Ep N - Title"
-    re.compile(r"^(?:episode|ep\.?)\s*(\d+)\s*[-–—]\s*(.+)$", re.IGNORECASE),
+    re.compile(r"^(?:episode|ep\.?)\s*(?P<epnum>\d+)\s*[-–—]\s*(?P<title>.+)$", re.IGNORECASE),
     # fallback: whole stem is the title
-    re.compile(r"^(.+)$"),
+    re.compile(r"^(?P<title>.+)$"),
 ]
 
 
 def _parse_date(s: str) -> Optional[datetime]:
-    for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d", "%Y/%m/%d"):
+    # len(fmt) != len(actual date string) because %Y is 2 chars but the year
+    # is 4 digits, so we pair each format with the correct slice length.
+    for fmt, n in [("%Y-%m-%dT%H:%M:%S", 19), ("%Y-%m-%d", 10), ("%Y/%m/%d", 10)]:
         try:
-            return datetime.strptime(s[:len(fmt)], fmt)
+            return datetime.strptime(s[:n], fmt)
         except (ValueError, TypeError):
             pass
     m = re.match(r"^(\d{4})$", s.strip())
     if m:
-        return datetime(int(m.group(1)), 1, 1)
+        return datetime(int(m.group(1)), 1, 1, 12, 0, 0)
     return None
 
 
@@ -138,30 +148,79 @@ def _parse_filename(stem: str) -> dict:
         m = pat.match(stem.strip())
         if not m:
             continue
-        groups = m.groups()
-        if len(groups) == 3:
-            # date, number, title
-            result = {"title": groups[2].strip()}
-            dt = _parse_date(groups[0])
+        gd = {k: v for k, v in m.groupdict().items() if v is not None}
+        result = {}
+        if "title" in gd:
+            result["title"] = gd["title"].strip()
+        if "date" in gd:
+            dt = _parse_date(gd["date"])
             if dt:
                 result["date"] = dt
-            if groups[1].isdigit():
-                result["episode_number"] = int(groups[1])
-            return result
-        if len(groups) == 2:
-            g0, g1 = groups[0], groups[1]
-            if re.match(r"^\d{4}-\d{2}-\d{2}$", g0):
-                result = {"title": g1.strip()}
-                dt = _parse_date(g0)
-                if dt:
-                    result["date"] = dt
-                return result
-            if g0.isdigit():
-                return {"episode_number": int(g0), "title": g1.strip()}
-            return {"title": g0.strip()}
-        if len(groups) == 1:
-            return {"title": groups[0].strip()}
+        if "epnum" in gd and gd["epnum"].isdigit():
+            result["episode_number"] = int(gd["epnum"])
+        if "season" in gd and gd["season"].isdigit():
+            result["season_number"] = int(gd["season"])
+        return result
     return {"title": stem.strip()}
+
+
+# ---------------------------------------------------------------------------
+# Folder analysis
+# ---------------------------------------------------------------------------
+
+def _parse_folder_context(audio_path: str, base_dir: str) -> dict:
+    """Extract metadata hints from subfolder names between base_dir and file."""
+    rel = os.path.relpath(os.path.dirname(audio_path), base_dir)
+    if rel == ".":
+        return {}
+    result = {}
+    for part in rel.split(os.sep):
+        if re.match(r"^\d{4}$", part):
+            result["folder_year"] = int(part)
+        m = re.match(r"^(?:[Ss]eason\s*|[Ss])(\d{1,2})$", part)
+        if m:
+            result["folder_season"] = int(m.group(1))
+    return result
+
+
+def _detect_folder_type(directory: str, audio_files: list[str]) -> dict:
+    """Classify folder structure and return stats for the UI."""
+    xml_count = sum(1 for f in audio_files if os.path.exists(f + ".xml"))
+    has_xml = xml_count > len(audio_files) * 0.5 if audio_files else False
+
+    # Collect immediate subdirectory names
+    subdirs = []
+    try:
+        for entry in os.scandir(directory):
+            if entry.is_dir() and not entry.name.startswith("."):
+                subdirs.append(entry.name)
+    except OSError:
+        pass
+
+    year_folders = sorted([s for s in subdirs if re.match(r"^\d{4}$", s)])
+    season_folders = sorted([s for s in subdirs if re.match(r"^(?:[Ss]eason\s*|[Ss])\d{1,2}$", s)])
+
+    # Determine type
+    if has_xml:
+        folder_type = "castcharm"
+    elif year_folders and len(year_folders) >= len(subdirs) * 0.5:
+        folder_type = "year_organized"
+    elif season_folders and len(season_folders) >= len(subdirs) * 0.5:
+        folder_type = "season_organized"
+    elif not subdirs or all(os.path.dirname(f) == directory for f in audio_files):
+        folder_type = "flat"
+    else:
+        folder_type = "mixed"
+
+    return {
+        "type": folder_type,
+        "has_xml_sidecars": has_xml,
+        "subfolder_count": len(subdirs),
+        "audio_file_count": len(audio_files),
+        "year_folders": [int(y) for y in year_folders],
+        "season_folders": season_folders,
+        "sample_filenames": [os.path.basename(f) for f in audio_files[:5]],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -470,6 +529,12 @@ def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
             if os.path.splitext(fname)[1].lower() in AUDIO_EXTENSIONS:
                 audio_files.append(os.path.join(root, fname))
 
+    # Folder analysis for the UI
+    folder_analysis = _detect_folder_type(directory, audio_files)
+
+    # Normalized feed title for smart stripping
+    feed_title_norm = _normalize(feed.title) if feed.title else ""
+
     # All feed episodes (including supplementary feeds)
     primary_id = feed.primary_feed_id or feed.id
     all_feed_ids = get_group_feed_ids(db, primary_id)
@@ -498,28 +563,91 @@ def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
         sidecar = _read_xml_sidecar(audio_path)
         tags    = _read_id3_tags(audio_path)
         fn_info = _parse_filename(stem)
+        folder_ctx = _parse_folder_context(audio_path, directory)
 
-        title    = (sidecar.get("title") or tags.get("title") or fn_info.get("title") or stem).strip()
+        # Smart podcast-name stripping: if the parsed title starts with
+        # the feed title, strip it for better matching
+        if feed_title_norm and fn_info.get("title"):
+            title_norm = _normalize(fn_info["title"])
+            if title_norm.startswith(feed_title_norm):
+                remainder = fn_info["title"][len(feed.title):].lstrip(" -\u2013\u2014")
+                if remainder:
+                    fn_info["title_stripped"] = remainder
+
+        # Track which source provided each field
+        sources = {}
+
+        # Title cascade
+        if sidecar.get("title"):
+            title = sidecar["title"].strip()
+            sources["title"] = "sidecar"
+        elif tags.get("title"):
+            title = tags["title"].strip()
+            sources["title"] = "id3"
+        elif fn_info.get("title"):
+            title = fn_info["title"].strip()
+            sources["title"] = "filename"
+        else:
+            title = stem
+            sources["title"] = "filename"
+
         duration = sidecar.get("duration") or tags.get("duration")
+        if duration:
+            sources["duration"] = "sidecar" if sidecar.get("duration") else "id3"
 
+        # Date cascade (includes folder context)
         published_at = None
+        date_is_approximate = False
         if sidecar.get("published"):
             published_at = _parse_date(sidecar["published"])
+            if published_at:
+                sources["date"] = "sidecar"
+                if _is_year_only(sidecar["published"]):
+                    date_is_approximate = True
         if published_at is None and fn_info.get("date"):
             published_at = fn_info["date"]
+            sources["date"] = "filename"
         if published_at is None and tags.get("date"):
             published_at = _parse_date(tags["date"])
+            if published_at:
+                sources["date"] = "id3"
+                if _is_year_only(tags["date"]):
+                    date_is_approximate = True
+        if published_at is None and folder_ctx.get("folder_year"):
+            published_at = datetime(folder_ctx["folder_year"], 1, 1, 12, 0, 0)
+            date_is_approximate = True
+            sources["date"] = "folder"
 
+        # Episode number cascade
         ep_num = None
         if sidecar.get("episode_number"):
             try:
                 ep_num = int(sidecar["episode_number"])
+                sources["episode_number"] = "sidecar"
             except (ValueError, TypeError):
                 pass
         if ep_num is None and tags.get("tracknumber"):
             ep_num = _parse_tracknumber(tags["tracknumber"])
-        if ep_num is None:
-            ep_num = fn_info.get("episode_number")
+            if ep_num is not None:
+                sources["episode_number"] = "id3"
+        if ep_num is None and fn_info.get("episode_number") is not None:
+            ep_num = fn_info["episode_number"]
+            sources["episode_number"] = "filename"
+
+        # Season number cascade
+        season_num = None
+        if sidecar.get("season_number"):
+            try:
+                season_num = int(sidecar["season_number"])
+                sources["season_number"] = "sidecar"
+            except (ValueError, TypeError):
+                pass
+        if season_num is None and fn_info.get("season_number") is not None:
+            season_num = fn_info["season_number"]
+            sources["season_number"] = "filename"
+        if season_num is None and folder_ctx.get("folder_season") is not None:
+            season_num = folder_ctx["folder_season"]
+            sources["season_number"] = "folder"
 
         # Already registered to an episode?
         owning_ep = registered_paths.get(norm_path)
@@ -529,19 +657,26 @@ def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
                 "filename": os.path.basename(audio_path),
                 "title": title,
                 "date": published_at.strftime("%Y-%m-%d") if published_at else None,
+                "date_is_approximate": date_is_approximate,
                 "episode_number": ep_num,
+                "season_number": season_num,
                 "duration": duration,
                 "already_registered": True,
                 "match": {"episode_id": owning_ep.id, "episode_title": owning_ep.title,
                           "confidence": 1.0, "method": "registered"},
                 "alternatives": [],
+                "metadata_sources": sources,
             })
             continue
 
-        # Score against unmatched candidates
+        # Score against unmatched candidates — use stripped title for matching
+        if fn_info.get("title_stripped"):
+            match_fn_info = {**fn_info, "title": fn_info["title_stripped"]}
+        else:
+            match_fn_info = fn_info
         available = [ep for ep in candidates if ep.id not in matched_ep_ids]
         file_dur_s = _dur_seconds(duration)
-        scored = _match_to_episode_scored(sidecar, tags, fn_info, available, file_dur_s)
+        scored = _match_to_episode_scored(sidecar, tags, match_fn_info, available, file_dur_s)
 
         best_match = None
         alternatives = []
@@ -569,11 +704,14 @@ def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
             "filename": os.path.basename(audio_path),
             "title": title,
             "date": published_at.strftime("%Y-%m-%d") if published_at else None,
+            "date_is_approximate": date_is_approximate,
             "episode_number": ep_num,
+            "season_number": season_num,
             "duration": duration,
             "already_registered": False,
             "match": best_match,
             "alternatives": alternatives,
+            "metadata_sources": sources,
         })
 
     n_registered = sum(1 for f in file_previews if f["already_registered"])
@@ -581,6 +719,7 @@ def preview_import_directory(feed_id: int, directory: str, db: Session) -> dict:
     n_unmatched  = sum(1 for f in file_previews if not f["already_registered"] and not f["match"])
 
     return {
+        "folder_analysis": folder_analysis,
         "files": file_previews,
         "total_files": len(audio_files),
         "matched": n_matched,
@@ -690,6 +829,16 @@ def import_staged(feed_id: int, items: list, db: Session) -> dict:
 
                 duration = sidecar.get("duration") or tags.get("duration")
 
+                # Season number cascade
+                season_num = item.get("season_number")
+                if season_num is None and sidecar.get("season_number"):
+                    try:
+                        season_num = int(sidecar["season_number"])
+                    except (ValueError, TypeError):
+                        pass
+                if season_num is None:
+                    season_num = fn_info.get("season_number")
+
                 ep = Episode(
                     feed_id             = feed_id,
                     title               = title,
@@ -698,6 +847,7 @@ def import_staged(feed_id: int, items: list, db: Session) -> dict:
                     date_is_approximate = date_is_approximate,
                     duration            = duration,
                     episode_number      = ep_num,
+                    season_number       = season_num,
                     enclosure_url       = sidecar.get("enclosure_url"),
                     enclosure_type      = sidecar.get("enclosure_type"),
                     author              = sidecar.get("author") or tags.get("artist"),
@@ -709,15 +859,32 @@ def import_staged(feed_id: int, items: list, db: Session) -> dict:
                 db.flush()
                 created += 1
 
+            # Copy file into managed folder (never link to original in-place)
+            final_path = audio_path
+            try:
+                target = _build_target_path(ep, feed, audio_path, db)
+                if os.path.normpath(target) != os.path.normpath(audio_path) and not os.path.exists(target):
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    shutil.copy2(audio_path, target)
+                    xml_src = audio_path + ".xml"
+                    if os.path.exists(xml_src):
+                        try:
+                            shutil.copy2(xml_src, target + ".xml")
+                        except OSError:
+                            pass
+                    final_path = target
+            except Exception as cp_err:
+                log.warning("Copy to managed folder failed for %s: %s (linking in-place)", audio_path, cp_err)
+
             # Mark as downloaded
             ep.status            = "downloaded"
-            ep.file_path         = audio_path
+            ep.file_path         = final_path
             ep.download_progress = 100
-            if os.path.exists(audio_path):
-                ep.file_size = os.path.getsize(audio_path)
+            if os.path.exists(final_path):
+                ep.file_size = os.path.getsize(final_path)
             if not ep.download_date:
                 try:
-                    ep.download_date = datetime.fromtimestamp(os.path.getmtime(audio_path))
+                    ep.download_date = datetime.fromtimestamp(os.path.getmtime(final_path))
                 except OSError:
                     ep.download_date = datetime.utcnow()
 
@@ -801,9 +968,11 @@ def import_directory(feed_id: int, directory: str, rename_files: bool,
     _import_jobs[feed_id]["total"] = len(audio_files)
     _import_jobs[feed_id]["message"] = f"Processing {len(audio_files)} files…"
 
-    # Load all feed episodes
+    # Load all feed episodes (including supplementary feeds)
+    primary_id = feed.primary_feed_id or feed.id
+    all_feed_ids = get_group_feed_ids(db, primary_id)
     existing = db.query(Episode).filter(
-        Episode.feed_id == feed_id, Episode.hidden.is_(False)
+        Episode.feed_id.in_(all_feed_ids), Episode.hidden.is_(False)
     ).all()
 
     # Files already registered to an episode — skip them entirely so we don't
@@ -903,25 +1072,24 @@ def import_directory(feed_id: int, directory: str, rename_files: bool,
                 db.flush()  # get ep.id
                 created += 1
 
-            # --- Rename if requested ---
+            # --- Copy into managed folder (never link to original in-place) ---
             final_path = audio_path
-            if rename_files and ep.title:
-                try:
-                    target = _build_target_path(ep, feed, audio_path, db, overrides=overrides)
-                    if target != audio_path and not os.path.exists(target):
-                        os.makedirs(os.path.dirname(target), exist_ok=True)
-                        shutil.copy2(audio_path, target)
-                        # Copy sidecar alongside
-                        xml_src = audio_path + ".xml"
-                        if os.path.exists(xml_src):
-                            try:
-                                shutil.copy2(xml_src, target + ".xml")
-                            except OSError:
-                                pass
-                        final_path = target
-                        renamed += 1
-                except Exception as re_err:
-                    log.warning("Rename failed for %s: %s", audio_path, re_err)
+            try:
+                target = _build_target_path(ep, feed, audio_path, db, overrides=overrides)
+                if os.path.normpath(target) != os.path.normpath(audio_path) and not os.path.exists(target):
+                    os.makedirs(os.path.dirname(target), exist_ok=True)
+                    shutil.copy2(audio_path, target)
+                    # Copy sidecar alongside
+                    xml_src = audio_path + ".xml"
+                    if os.path.exists(xml_src):
+                        try:
+                            shutil.copy2(xml_src, target + ".xml")
+                        except OSError:
+                            pass
+                    final_path = target
+                    renamed += 1
+            except Exception as cp_err:
+                log.warning("Copy to managed folder failed for %s: %s (linking in-place)", audio_path, cp_err)
 
             # --- Mark as downloaded ---
             ep.status = "downloaded"

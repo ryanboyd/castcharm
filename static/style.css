@@ -2143,6 +2143,55 @@ body.has-player #content { padding-bottom: 80px; }
 .dir-entry:hover { background: var(--bg-3); color: var(--text); }
 .dir-icon { font-size: 14px; flex-shrink: 0; }
 .dir-up { color: var(--text-3); font-style: italic; }
+.import-dir-browser {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  max-height: 240px; overflow-y: auto;
+  margin-top: 8px;
+  background: var(--bg);
+}
+
+/* ── Import wizard ─────────────────────────────────────────────────────── */
+.import-analysis-banner {
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+.import-analysis-banner.banner-castcharm { background: rgba(var(--success-rgb,60,180,100),0.12); color: var(--success); }
+.import-analysis-banner.banner-year { background: rgba(var(--primary-rgb,80,130,220),0.12); color: var(--primary); }
+.import-analysis-banner.banner-season { background: rgba(var(--warning-rgb,200,150,50),0.12); color: var(--warning); }
+.import-stat-cards {
+  display: flex; gap: 10px; margin-bottom: 12px; flex-wrap: wrap;
+}
+.import-stat-card {
+  flex: 1; min-width: 100px;
+  text-align: center; padding: 14px 10px;
+  border-radius: 10px; border: 1px solid var(--border);
+  background: var(--bg-2);
+}
+.import-stat-card .stat-num { font-size: 28px; font-weight: 700; line-height: 1.2; }
+.import-stat-card .stat-label { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.import-filter-tabs {
+  display: flex; gap: 4px; margin-bottom: 10px; flex-wrap: wrap;
+}
+.import-filter-tab {
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 500;
+  cursor: pointer; border: 1px solid var(--border); background: var(--bg);
+  color: var(--text-2); transition: all 0.15s;
+}
+.import-filter-tab:hover { background: var(--bg-3); }
+.import-filter-tab.active { background: var(--primary); color: #fff; border-color: var(--primary); }
+.import-source-tag {
+  display: inline-block; font-size: 10px; padding: 1px 5px;
+  border-radius: 3px; font-weight: 500; margin-left: 4px;
+  vertical-align: middle;
+}
+.import-source-tag.src-sidecar { background: rgba(var(--success-rgb,60,180,100),0.15); color: var(--success); }
+.import-source-tag.src-id3 { background: rgba(var(--primary-rgb,80,130,220),0.15); color: var(--primary); }
+.import-source-tag.src-filename { background: rgba(128,128,128,0.15); color: var(--text-3); }
+.import-source-tag.src-folder { background: rgba(160,100,220,0.15); color: rgb(160,100,220); }
 
 /* ── Timezone combobox ───────────────────────────────────────────────────── */
 .tz-combo { position: relative; }
