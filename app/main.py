@@ -217,9 +217,22 @@ def get_status():
             db.query(func.count(Episode.id)).filter(Episode.status == "failed").scalar() or 0
         )
 
-        from app.activity import get_syncing_count
+        from app.activity import get_syncing_count, get_syncing_feed_ids
         from app.scheduler import get_next_run_any
         from app.importer import get_active_import_count
+
+        # Primary feed IDs with any queued or active downloads (handles supplementary feeds)
+        _active_feed_ids = [
+            r[0] for r in db.query(Episode.feed_id)
+            .filter(Episode.status.in_(["queued", "downloading"]))
+            .distinct().all()
+        ]
+        if _active_feed_ids:
+            _feed_rows = db.query(Feed.id, Feed.primary_feed_id).filter(Feed.id.in_(_active_feed_ids)).all()
+            downloading_feed_ids = list({f.primary_feed_id or f.id for f in _feed_rows})
+        else:
+            downloading_feed_ids = []
+
         return StatusOut(
             scheduler_running=is_running(),
             download_queue_size=download_queue_size,
@@ -235,6 +248,8 @@ def get_status():
             next_sync_at=get_next_run_any(),
             importing_count=get_active_import_count(),
             scanning=False,
+            downloading_feed_ids=downloading_feed_ids,
+            syncing_feed_ids=get_syncing_feed_ids(),
         )
     finally:
         db.close()

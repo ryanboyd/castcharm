@@ -29,3 +29,8 @@ def mark_sync_done(feed_id: int) -> None:
 def get_syncing_count() -> int:
     with _lock:
         return len(_active_syncs) + len(_pending_syncs)
+
+
+def get_syncing_feed_ids() -> list[int]:
+    with _lock:
+        return list(_active_syncs | _pending_syncs)
