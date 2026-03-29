@@ -177,42 +177,10 @@ async function viewDashboard() {
       })()}
 
       <div class="dash-grid">
-        <div class="card">
-          <div class="card-body">
-            <div class="section-title">Recently Updated</div>
-            ${(() => {
-              const withDL = feeds
-                .filter((f) => f.last_download_at)
-                .sort((a, b) => new Date(b.last_download_at) - new Date(a.last_download_at))
-                .slice(0, 5);
-              if (withDL.length === 0) {
-                return `<div class="empty-state" style="padding:24px 16px">
-                  <div class="empty-state-title" style="font-size:13px">No downloads yet</div>
-                </div>`;
-              }
-              return withDL.map((f) => `
-                <div class="activity-item">
-                  <div class="activity-icon">
-                    ${_thumb(f.custom_image_url || f.image_url)}
-                  </div>
-                  <div class="activity-info">
-                    <div class="activity-title truncate"
-                         style="cursor:pointer;color:var(--text)"
-                         onclick="Router.navigate('/feeds/${f.id}')">
-                      ${f.title || f.url}
-                    </div>
-                    <div class="activity-sub">
-                      ${f.downloaded_count} downloaded · last ${timeAgo(f.last_download_at)}
-                    </div>
-                  </div>
-                </div>`).join("");
-            })()}
-          </div>
-        </div>
 
         <div class="card">
           <div class="card-body">
-            <div class="section-title">Recently Released Episodes</div>
+            <div class="section-title">Newest Episodes</div>
             ${recentDL.length === 0
               ? `<div class="empty-state" style="padding:24px 16px">
                   <div class="empty-state-title" style="font-size:13px">No downloads yet</div>
@@ -238,7 +206,7 @@ async function viewDashboard() {
 
         <div class="card">
           <div class="card-body">
-            <div class="section-title">Feed Errors</div>
+            <div class="section-title">Feed Health</div>
             ${(() => {
               const errFeeds = feeds.filter((f) => f.last_error).slice(0, 6);
               if (errFeeds.length === 0) {
