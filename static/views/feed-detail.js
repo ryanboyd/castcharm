@@ -42,7 +42,7 @@ window.playEpisode = async function (epId) {
       title: ep.title || "Untitled",
       feedTitle: ep.feed_title || window._epState?.feed?.title || "",
       feedId: ep.feed_id,
-      resumeAt: 0,
+      resumeAt: ep.play_position_seconds || 0,
     });
   } catch (e) { Toast.error(e.message); }
 };
