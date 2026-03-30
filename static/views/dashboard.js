@@ -101,7 +101,6 @@ async function viewDashboard() {
         <div class="card-body">
           <div class="section-title">Continue Listening</div>
           ${continueEps.map((ep) => {
-            const isPlaying = Player.currentId() === ep.id && Player.isPlaying();
             const minsIn = ep.play_position_seconds ? Math.floor(ep.play_position_seconds / 60) + "m in" : "";
             return `
             <div class="activity-item" id="cl-ep-${ep.id}">
@@ -118,10 +117,7 @@ async function viewDashboard() {
                         onclick="Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>${minsIn ? ` · ${minsIn}` : ""}
                 </div>
               </div>
-              <button class="btn btn-ghost btn-sm btn-icon ep-play-btn" data-ep-id="${ep.id}"
-                      title="${isPlaying ? "Pause" : "Play"}" onclick="playEpisode(${ep.id})">
-                ${isPlaying ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>') : svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-              </button>
+              ${epPlayBtn(ep, { stopProp: false })}
               <button class="btn btn-ghost btn-sm btn-icon" title="Mark as played"
                       onclick="_markCLPlayed(${ep.id})">
                 ${svg('<polyline points="20 6 9 17 4 12"/>')}
@@ -155,11 +151,7 @@ async function viewDashboard() {
                       onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
               </div>
             </div>
-            <button class="btn btn-ghost btn-sm btn-icon ep-play-btn" data-ep-id="${ep.id}"
-                    title="${Player.currentId() === ep.id && Player.isPlaying() ? "Pause" : "Play"}"
-                    onclick="event.stopPropagation();playEpisode(${ep.id})">
-              ${Player.currentId() === ep.id && Player.isPlaying() ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>') : svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-            </button>
+            ${epPlayBtn(ep)}
           </div>`;
 
         return `
@@ -201,11 +193,7 @@ async function viewDashboard() {
                             onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span> · ${timeAgo(ep.published_at)}${ep.file_size ? ` · ${fmtBytes(ep.file_size)}` : ""}
                     </div>
                   </div>
-                  <button class="btn btn-ghost btn-sm btn-icon ep-play-btn" data-ep-id="${ep.id}"
-                          title="${Player.currentId() === ep.id && Player.isPlaying() ? "Pause" : "Play"}"
-                          onclick="event.stopPropagation();playEpisode(${ep.id})">
-                    ${Player.currentId() === ep.id && Player.isPlaying() ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>') : svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-                  </button>
+                  ${epPlayBtn(ep)}
                 </div>`).join("")}
           </div>
         </div>

@@ -1478,13 +1478,7 @@ function episodeRow(ep, feed) {
   }
 
   // Per-file buttons only available when downloaded
-  const isCurrentlyPlaying = Player.currentId() === ep.id && Player.isPlaying();
-  const playBtn = (isDownloaded && !ep.file_missing) ? `
-  <button class="btn btn-ghost btn-sm btn-icon ep-play-btn" data-ep-id="${ep.id}"
-          title="${isCurrentlyPlaying ? "Pause" : "Play"}"
-          onclick="event.stopPropagation();playEpisode(${ep.id})">
-    ${isCurrentlyPlaying ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>') : svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-  </button>` : "";
+  const playBtn = (isDownloaded && !ep.file_missing) ? epPlayBtn(ep) : "";
 
   const _close = `this.closest('.ep-more-wrap').removeAttribute('data-open');`;
   const moreDropdown = `
