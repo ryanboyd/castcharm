@@ -442,6 +442,17 @@ def refresh_feed(feed_id: int, background_tasks: BackgroundTasks, db: Session = 
     return _feed_out(feed, db)
 
 
+@router.post("/{feed_id}/clear-error")
+def clear_feed_error(feed_id: int, db: Session = Depends(get_db)):
+    """Dismiss the last sync error for a feed without triggering a sync."""
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    feed.last_error = None
+    db.commit()
+    return _feed_out(feed, db)
+
+
 @router.get("/{feed_id}/episodes", response_model=list[EpisodeOut])
 def get_feed_episodes(
     feed_id: int,

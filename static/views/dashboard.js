@@ -189,6 +189,33 @@ async function viewDashboard() {
         </div>
       </div>` : ""}
 
+      <div class="card" style="margin-bottom:12px">
+        <div class="card-body">
+          <div class="section-title">Newest Episodes</div>
+          ${recentDL.length === 0
+            ? `<div class="empty-state" style="padding:24px 16px">
+                <div class="empty-state-title" style="font-size:13px">No downloads yet</div>
+              </div>`
+            : recentDL.map((ep) => `
+              <div class="activity-item" style="cursor:pointer"
+                   onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
+                <div class="activity-icon">
+                  ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
+                </div>
+                <div class="activity-info">
+                  <div class="activity-title truncate">${ep.title || "Untitled"}</div>
+                  <div class="activity-sub">
+                    <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
+                          onmouseover="this.style.textDecorationColor=''"
+                          onmouseout="this.style.textDecorationColor='transparent'"
+                          onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span> · ${timeAgo(ep.published_at)}${ep.file_size ? ` · ${fmtBytes(ep.file_size)}` : ""}
+                  </div>
+                </div>
+                ${epPlayBtn(ep)}
+              </div>`).join("")}
+        </div>
+      </div>
+
       ${(() => {
         const buckets = [
           { key: "short",      label: "< 15 min",   eps: suggestions.short      || [] },
@@ -238,33 +265,6 @@ async function viewDashboard() {
       })()}
 
       <div class="dash-grid">
-
-        <div class="card">
-          <div class="card-body">
-            <div class="section-title">Newest Episodes</div>
-            ${recentDL.length === 0
-              ? `<div class="empty-state" style="padding:24px 16px">
-                  <div class="empty-state-title" style="font-size:13px">No downloads yet</div>
-                </div>`
-              : recentDL.map((ep) => `
-                <div class="activity-item" style="cursor:pointer"
-                     onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
-                  <div class="activity-icon">
-                    ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
-                  </div>
-                  <div class="activity-info">
-                    <div class="activity-title truncate">${ep.title || "Untitled"}</div>
-                    <div class="activity-sub">
-                      <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
-                            onmouseover="this.style.textDecorationColor=''"
-                            onmouseout="this.style.textDecorationColor='transparent'"
-                            onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span> · ${timeAgo(ep.published_at)}${ep.file_size ? ` · ${fmtBytes(ep.file_size)}` : ""}
-                    </div>
-                  </div>
-                  ${epPlayBtn(ep)}
-                </div>`).join("")}
-          </div>
-        </div>
 
         <div class="card">
           <div class="card-body">

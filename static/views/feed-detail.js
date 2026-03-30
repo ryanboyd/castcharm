@@ -99,7 +99,6 @@ async function _refreshFeedStats() {
     <span class="feed-stat">${updated.downloaded_count} downloaded</span>
     ${updated.available_count > 0 ? `<span class="feed-stat-sep">·</span><span class="feed-stat">${updated.available_count} not downloaded</span>` : ""}
     ${updated.unplayed_count > 0 ? `<span class="feed-stat-sep">·</span><span class="feed-stat">${updated.unplayed_count} unplayed</span>` : ""}
-    ${updated.last_error ? `<span class="feed-stat-sep">·</span><span class="feed-stat" style="color:var(--error)">feed error</span>` : ""}
   `;
   const lastChecked = document.querySelector(".feed-last-checked");
   if (lastChecked) {
@@ -107,8 +106,30 @@ async function _refreshFeedStats() {
       ? `Last checked ${fmtDateTime(updated.last_checked)}`
       : "Never checked";
   }
+  _renderFeedErrorBanner(updated);
   window._feedDetailDL?.refresh();
   return updated;
+}
+
+function _renderFeedErrorBanner(feed) {
+  const banner = document.getElementById("feed-error-banner");
+  if (!banner) return;
+  if (feed.last_error) {
+    banner.style.display = "";
+    banner.innerHTML = `
+      <div style="display:flex;align-items:flex-start;gap:10px">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+             style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:var(--error)">
+          <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        <span style="flex:1;font-size:13px;color:var(--error);word-break:break-word">${escHTML(feed.last_error)}</span>
+        <button class="btn btn-ghost btn-sm" onclick="window._dismissFeedError(${feed.id})"
+                style="flex-shrink:0;font-size:12px;padding:2px 8px">Dismiss</button>
+      </div>`;
+  } else {
+    banner.style.display = "none";
+    banner.innerHTML = "";
+  }
 }
 
 // _pollImportBanner checks the import status for a feed and shows the progress banner
@@ -370,7 +391,18 @@ async function viewFeedDetail(feedId) {
             <span class="feed-stat">${feed.downloaded_count} downloaded</span>
             ${feed.available_count > 0 ? `<span class="feed-stat-sep">·</span><span class="feed-stat">${feed.available_count} not downloaded</span>` : ""}
             ${feed.unplayed_count > 0 ? `<span class="feed-stat-sep">·</span><span class="feed-stat">${feed.unplayed_count} unplayed</span>` : ""}
-            ${feed.last_error ? `<span class="feed-stat-sep">·</span><span class="feed-stat" style="color:var(--error)">feed error</span>` : ""}
+          </div>
+          <div id="feed-error-banner" style="${feed.last_error ? "" : "display:none"};margin-top:8px;padding:8px 10px;background:var(--error-bg, color-mix(in srgb, var(--error) 12%, transparent));border:1px solid color-mix(in srgb, var(--error) 30%, transparent);border-radius:6px">
+            ${feed.last_error ? `
+            <div style="display:flex;align-items:flex-start;gap:10px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                   style="width:16px;height:16px;flex-shrink:0;margin-top:1px;color:var(--error)">
+                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+              <span style="flex:1;font-size:13px;color:var(--error);word-break:break-word">${escHTML(feed.last_error)}</span>
+              <button class="btn btn-ghost btn-sm" onclick="window._dismissFeedError(${feed.id})"
+                      style="flex-shrink:0;font-size:12px;padding:2px 8px">Dismiss</button>
+            </div>` : ""}
           </div>
           ${feed.description ? `<div class="feed-header-desc">${feed.description}</div>` : ""}
           <div class="feed-header-actions">
@@ -741,6 +773,8 @@ async function viewFeedDetail(feedId) {
     </div>`;
 
   // Wire up buttons
+  window._onSyncIdle = _refreshFeedStats;
+
   document.getElementById("btn-sync-feed").addEventListener("click", async () => {
     try {
       await API.syncFeed(id);
@@ -1433,6 +1467,15 @@ window._feedUpdateAutocleanMode = function() {
     const input = document.querySelector('[name="keep_latest"]');
     if (input && !input.value) input.value = "10";
   }
+};
+
+window._dismissFeedError = async function(feedId) {
+  try {
+    await API.clearFeedError(feedId);
+    const banner = document.getElementById("feed-error-banner");
+    if (banner) { banner.style.display = "none"; banner.innerHTML = ""; }
+    if (window._epState?.feed) window._epState.feed.last_error = null;
+  } catch (e) { Toast.error(e.message); }
 };
 
 window._runFeedAutocleanNow = async function(feedId) {

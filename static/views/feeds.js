@@ -104,7 +104,7 @@ function _feedCardMeta(f) {
     <span class="badge badge-success">${f.downloaded_count} downloaded</span>
     <span class="badge ${f.unplayed_count > 0 ? "badge-primary" : "badge-default"}">${f.unplayed_count} unplayed</span>
     ${!f.active ? `<span class="badge badge-default">Paused</span>` : ""}
-    ${f.last_error ? `<span class="badge badge-error" title="${f.last_error}">Error</span>` : ""}`;
+    ${f.last_error ? `<span class="badge badge-error" title="${escHTML(f.last_error)}">Sync error</span>` : ""}`;
 }
 
 // Patch just the badge counts on each card without re-rendering or re-sorting.
@@ -269,7 +269,10 @@ async function viewFeeds() {
         await API.syncFeed(id);
         Toast.success("Sync started");
         const card = document.querySelector(`#feeds-grid .feed-card[data-id="${id}"]`);
-        if (card) _setCardPip(card, false, true);
+        if (card) {
+          _setCardPip(card, false, true);
+          card.querySelector(".badge-error")?.remove();
+        }
         updateStatus();
       } catch (err) {
         Toast.error(err.message);
@@ -332,6 +335,15 @@ async function viewFeeds() {
   });
 
   wireSyncAllBtn("#btn-sync-all");
+
+  document.getElementById("btn-sync-all")?.addEventListener("click", () => {
+    const grid = document.getElementById("feeds-grid");
+    if (!grid) return;
+    const activeIds = new Set((_feedsData || []).filter(f => f.active).map(f => f.id));
+    for (const card of grid.querySelectorAll(".feed-card[data-id]")) {
+      if (activeIds.has(Number(card.dataset.id))) _setCardPip(card, false, true);
+    }
+  });
 }
 
 function feedCard(f) {

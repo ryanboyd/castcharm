@@ -167,6 +167,8 @@ def list_episodes(
         q = q.filter(Episode.download_date >= download_since)
     if sort == "download_date":
         episodes = q.order_by(Episode.download_date.desc().nullslast(), Episode.id.desc()).offset(offset).limit(limit).all()
+    elif status in ("queued", "downloading"):
+        episodes = q.order_by(Episode.queued_at.asc().nullslast(), Episode.id.asc()).offset(offset).limit(limit).all()
     else:
         episodes = q.order_by(Episode.published_at.desc()).offset(offset).limit(limit).all()
     return [_ep_out(ep) for ep in episodes]

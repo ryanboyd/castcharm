@@ -370,6 +370,7 @@ function wireSyncAllBtn(selector) {
     btn.textContent = "Syncing\u2026";
     try {
       await API.syncAllFeeds();
+      document.querySelectorAll("#feeds-grid .badge-error").forEach(el => el.remove());
       updateStatus();
       Toast.success("Sync started for all active feeds");
     } catch (err) {
