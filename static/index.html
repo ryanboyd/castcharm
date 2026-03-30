@@ -39,10 +39,6 @@
           Downloads
           <span id="dl-nav-badge" style="display:none;margin-left:auto;background:var(--primary);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:10px;min-width:18px;text-align:center"></span>
         </a>
-        <a class="nav-item" data-view="settings" href="#/settings">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M17.66 6.34a8 8 0 0 1 0 11.32M6.34 6.34a8 8 0 0 0 0 11.32"/></svg>
-          Settings
-        </a>
         <a class="nav-item" data-view="stats" href="#/stats">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           Stats
@@ -50,6 +46,10 @@
         <a class="nav-item" data-view="logs" href="#/logs">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
           Logs
+        </a>
+        <a class="nav-item" data-view="settings" href="#/settings">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M17.66 6.34a8 8 0 0 1 0 11.32M6.34 6.34a8 8 0 0 0 0 11.32"/></svg>
+          Settings
         </a>
       </nav>
       <div id="app-status">
@@ -68,7 +68,7 @@
       <button id="hamburger" aria-label="Open menu" onclick="toggleSidebar()">
         <span></span><span></span><span></span>
       </button>
-      <div class="mobile-header-logo">
+      <div class="mobile-header-logo" onclick="Router.navigate('/')" style="cursor:pointer">
         <img src="/static/icon-64.png" alt="" class="mobile-header-icon" />
         <span class="logo-text">CastCharm</span>
       </div>

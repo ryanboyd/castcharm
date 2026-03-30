@@ -145,6 +145,24 @@ function artImg(url, fallbackEmoji = "", size = "", paused = false) {
   return `<div ${style}>${inner}${pauseOverlay}</div>`;
 }
 
+/**
+ * Render a standardised episode play/pause/resume button.
+ * Handles all three states: currently playing (pause icon), resumable (|▶ icon), play from start (▶ icon).
+ * Uses `ep-play-btn` + `data-ep-id` so Player._syncPlayBtns() keeps it live.
+ */
+function epPlayBtn(ep, { extraClasses = "", onclick = `playEpisode(${ep.id})`, stopProp = true } = {}) {
+  const playing   = Player.currentId() === ep.id && Player.isPlaying();
+  const resumable = !ep.played && (ep.play_position_seconds > 0);
+  const icon = playing   ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>')
+             : resumable ? svg(Player.resumeIcon())
+             :             svg(Player.playIcon());
+  const title = playing ? "Pause" : resumable ? "Resume" : "Play";
+  const clickHandler = stopProp ? `event.stopPropagation();${onclick}` : onclick;
+  return `<button class="btn btn-ghost btn-sm btn-icon ep-play-btn${extraClasses ? " " + extraClasses : ""}"
+          data-ep-id="${ep.id}"${resumable ? ' data-resumable="1"' : ''}
+          title="${title}" onclick="${clickHandler}">${icon}</button>`;
+}
+
 function toggle(label, name, checked, hint = "") {
   return `<div class="form-group">
     <div class="flex items-center gap-2">
@@ -175,6 +193,25 @@ function collectForm(form) {
 window.togglePanel = function (id) {
   document.getElementById(id).classList.toggle("open");
 };
+
+// ============================================================
+// Dropdown viewport boundary detection
+// ============================================================
+// Reposition a dropdown element so it stays within the viewport.
+// Resets left/right first to measure the natural position, then
+// flips if the dropdown would be clipped at the right or left edge.
+function positionDropdown(el) {
+  el.style.right = "";
+  el.style.left = "";
+  const rect = el.getBoundingClientRect();
+  if (rect.right > window.innerWidth - 8) {
+    el.style.right = "0";
+    el.style.left = "auto";
+  } else if (rect.left < 8) {
+    el.style.left = "0";
+    el.style.right = "auto";
+  }
+}
 
 // ============================================================
 // Animated removal

@@ -35,6 +35,68 @@ function _miniPie(pct) {
   </svg>`;
 }
 
+window._refreshSuggestions = async function(btn) {
+  btn.disabled = true;
+  btn.style.opacity = "0.5";
+  try {
+    const suggestions = await API.getSuggestions();
+    const buckets = [
+      { key: "short",      label: "< 15 min",   eps: suggestions.short      || [] },
+      { key: "medium",     label: "15–45 min",  eps: suggestions.medium     || [] },
+      { key: "long",       label: "45–90 min",  eps: suggestions.long       || [] },
+      { key: "extra_long", label: "90+ min",    eps: suggestions.extra_long || [] },
+    ].filter(b => b.eps.length > 0);
+
+    const grid = document.getElementById("suggested-listening-grid");
+    const card = document.getElementById("suggested-listening-card");
+    if (!grid) return;
+
+    // Fade out
+    grid.classList.remove("suggest-fade-in");
+    grid.classList.add("suggest-fade-out");
+    await new Promise(r => setTimeout(r, 250));
+
+    if (!buckets.length) {
+      card?.remove();
+      return;
+    }
+
+    const epRow = (ep) => `
+      <div class="activity-item" style="cursor:pointer"
+           onclick="window._pendingEpScroll=${ep.id};Router.navigate('/feeds/${ep.feed_id}')">
+        <div class="activity-icon" style="flex-shrink:0">
+          ${_thumb(ep.custom_image_url || ep.episode_image_url || ep.feed_image_url)}
+        </div>
+        <div class="activity-info" style="flex:1;min-width:0">
+          <div class="activity-title truncate">${ep.title || "Untitled"}</div>
+          <div class="activity-sub">
+            <span style="cursor:pointer;text-decoration:underline;text-decoration-color:transparent"
+                  onmouseover="this.style.textDecorationColor=''"
+                  onmouseout="this.style.textDecorationColor='transparent'"
+                  onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
+          </div>
+        </div>
+        ${epPlayBtn(ep)}
+      </div>`;
+
+    grid.innerHTML = buckets.map(b => `
+      <div>
+        <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border)">${b.label}</div>
+        ${b.eps.map(epRow).join("")}
+      </div>`).join("");
+
+    // Fade in
+    grid.classList.remove("suggest-fade-out");
+    grid.classList.add("suggest-fade-in");
+    grid.addEventListener("animationend", () => grid.classList.remove("suggest-fade-in"), { once: true });
+  } catch (e) {
+    Toast.error(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.style.opacity = "";
+  }
+};
+
 // ============================================================
 // Dashboard view
 // ============================================================
@@ -101,7 +163,6 @@ async function viewDashboard() {
         <div class="card-body">
           <div class="section-title">Continue Listening</div>
           ${continueEps.map((ep) => {
-            const isPlaying = Player.currentId() === ep.id && Player.isPlaying();
             const minsIn = ep.play_position_seconds ? Math.floor(ep.play_position_seconds / 60) + "m in" : "";
             return `
             <div class="activity-item" id="cl-ep-${ep.id}">
@@ -118,10 +179,7 @@ async function viewDashboard() {
                         onclick="Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>${minsIn ? ` · ${minsIn}` : ""}
                 </div>
               </div>
-              <button class="btn btn-ghost btn-sm btn-icon ep-play-btn" data-ep-id="${ep.id}"
-                      title="${isPlaying ? "Pause" : "Play"}" onclick="playEpisode(${ep.id})">
-                ${isPlaying ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>') : svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-              </button>
+              ${epPlayBtn(ep, { stopProp: false })}
               <button class="btn btn-ghost btn-sm btn-icon" title="Mark as played"
                       onclick="_markCLPlayed(${ep.id})">
                 ${svg('<polyline points="20 6 9 17 4 12"/>')}
@@ -155,17 +213,20 @@ async function viewDashboard() {
                       onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span>
               </div>
             </div>
-            <button class="btn btn-ghost btn-sm btn-icon" title="Play"
-                    onclick="event.stopPropagation();playEpisode(${ep.id})">
-              ${svg('<polygon points="5 3 19 12 5 21 5 3"/>')}
-            </button>
+            ${epPlayBtn(ep)}
           </div>`;
 
         return `
-        <div class="card" style="margin-bottom:12px">
+        <div class="card" style="margin-bottom:12px" id="suggested-listening-card">
           <div class="card-body">
-            <div class="section-title" style="margin-bottom:12px">Suggested Listening</div>
-            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:0 24px;align-items:start">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+              <div class="section-title">Suggested Listening</div>
+              <button class="btn btn-ghost btn-sm btn-icon" title="Refresh suggestions"
+                      onclick="_refreshSuggestions(this)" style="flex-shrink:0">
+                ${svg('<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>')}
+              </button>
+            </div>
+            <div id="suggested-listening-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:0 24px;align-items:start">
               ${buckets.map(b => `
                 <div>
                   <div style="font-size:11px;font-weight:600;color:var(--text-3);text-transform:uppercase;letter-spacing:0.04em;margin-bottom:4px;padding-bottom:4px;border-bottom:1px solid var(--border)">${b.label}</div>
@@ -200,6 +261,7 @@ async function viewDashboard() {
                             onclick="event.stopPropagation();Router.navigate('/feeds/${ep.feed_id}')">${ep.feed_title || ""}</span> · ${timeAgo(ep.published_at)}${ep.file_size ? ` · ${fmtBytes(ep.file_size)}` : ""}
                     </div>
                   </div>
+                  ${epPlayBtn(ep)}
                 </div>`).join("")}
           </div>
         </div>
@@ -222,7 +284,7 @@ async function viewDashboard() {
                   </div>
                   <div class="activity-info">
                     <div class="activity-title truncate" style="color:var(--text)">${f.title || f.url}</div>
-                    <div class="activity-sub" style="color:var(--error)">${(f.last_error || "").slice(0, 80)}</div>
+                    <div class="activity-sub truncate" style="color:var(--error);max-width:100%">${escHTML((f.last_error || "").slice(0, 120))}</div>
                   </div>
                 </div>`).join("");
             })()}

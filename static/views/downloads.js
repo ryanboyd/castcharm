@@ -203,7 +203,7 @@ function renderAvailableFeeds(feeds) {
 
   const dlIcon = svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
   const caret = svg('<polyline points="6 9 12 15 18 9"/>');
-  const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
+  const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
 
   let globalBtns = "";
   if (totalAvail > 0) {
@@ -253,7 +253,7 @@ function renderAvailableFeeds(feeds) {
         ${(() => {
           const dlIcon = svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
           const caret = svg('<polyline points="6 9 12 15 18 9"/>');
-          const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
+          const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
           const unplayed = f.unplayed_available_count || 0;
           if (unplayed > 0) {
             return `<div class="ep-more-wrap" onclick="event.stopPropagation()">

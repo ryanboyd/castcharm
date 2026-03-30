@@ -38,6 +38,20 @@
 }
 
 /* =========================================================
+   Z-index scale
+   =========================================================
+   200  — Dropdowns / tooltips / tz-dropdown
+   300  — Sidebar overlay (mobile backdrop)
+   400  — Sidebar (mobile slide-in)
+   500  — Player bar
+   600  — Toasts
+   700  — Modal overlay
+   800  — Modal
+   900  — Setup / login overlays
+   950  — Search overlay
+   ========================================================= */
+
+/* =========================================================
    Reset & Base
    ========================================================= */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -338,6 +352,7 @@ img { display: block; }
 .stat-card:hover {
   border-color: var(--primary);
   background: var(--bg-3);
+  transform: translateY(-1px);
 }
 
 .stat-label {
@@ -545,6 +560,7 @@ img { display: block; }
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .badge-default { background: var(--bg-3); color: var(--text-2); }
@@ -647,7 +663,7 @@ img { display: block; }
   padding: 0 12px 0 58px;
   transition: max-height 0.28s ease, padding-bottom 0.28s ease;
 }
-.episode-item[data-notes-open] .ep-notes-panel { max-height: 800px; padding-bottom: 12px; }
+.episode-item[data-notes-open] .ep-notes-panel { max-height: min(800px, 60vh); padding-bottom: 12px; }
 
 .ep-notes-inner {
   background: var(--bg-3);
@@ -770,7 +786,7 @@ img { display: block; }
 /* =========================================================
    Forms
    ========================================================= */
-.form-group { margin-bottom: 18px; }
+.form-group { margin-bottom: 16px; }
 
 .form-label {
   display: block;
@@ -965,7 +981,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 700;
   padding: 12px;
   backdrop-filter: blur(2px);
   opacity: 1;
@@ -1028,6 +1044,8 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   padding: 18px;
   overflow-y: auto;
   overflow-x: hidden;
+  flex: 1;
+  min-height: 0;
 }
 
 .modal-actions {
@@ -1038,6 +1056,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   margin-top: 18px;
   padding-top: 14px;
   border-top: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
 /* Wizard option cards (used in Add Podcast modal) */
@@ -1127,7 +1146,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   position: fixed;
   bottom: 24px;
   right: 24px;
-  z-index: 2000;
+  z-index: 600;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1186,6 +1205,17 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 }
 
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@keyframes suggest-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+@keyframes suggest-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.suggest-fade-out { animation: suggest-fade-out 0.25s ease forwards; }
+.suggest-fade-in  { animation: suggest-fade-in  0.4s  ease forwards; }
 
 /* =========================================================
    Empty states
@@ -1382,7 +1412,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   display: none;
   position: fixed;
   inset: 0;
-  z-index: 199;
+  z-index: 300;
   background: rgba(0, 0, 0, 0.55);
 }
 
@@ -1399,7 +1429,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
     top: 0;
     left: 0;
     height: 100vh;
-    z-index: 200;
+    z-index: 400;
     transform: translateX(-100%);
     transition: transform 0.25s ease;
     box-shadow: 4px 0 24px rgba(0,0,0,0.5);
@@ -1411,7 +1441,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 
   .page { padding: 16px; }
   .form-row { grid-template-columns: 1fr; }
-  .feeds-grid { grid-template-columns: 1fr 1fr; }
+  .feeds-grid { grid-template-columns: 1fr; }
 }
 
 /* =========================================================
@@ -1425,6 +1455,8 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
 
 @media (max-width: 700px) {
   .dash-grid { grid-template-columns: 1fr; }
+  .log-entry { grid-template-columns: 70px 1fr; }
+  .log-entry .log-ts, .log-entry .log-logger { display: none; }
 }
 
 /* =========================================================
@@ -1506,6 +1538,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   background: var(--bg-2);
   border: 1px solid var(--border);
   border-radius: var(--radius);
+  overflow-x: auto;
   overflow-y: auto;
   max-height: calc(100vh - 220px);
   font-family: "SF Mono", "Fira Code", "Consolas", monospace;
@@ -1561,7 +1594,7 @@ select.form-control { appearance: none; background-image: url("data:image/svg+xm
   bottom: 0;
   left: 0;
   right: 0;
-  z-index: 200;
+  z-index: 500;
   background: var(--bg-2);
   border-top: 1px solid var(--border);
   box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
@@ -1966,7 +1999,7 @@ body.has-player #content { padding-bottom: 80px; }
 /* ── Search overlay ─────────────────────────────────────────────────────── */
 #search-overlay {
   display: none;
-  position: fixed; inset: 0; z-index: 9500;
+  position: fixed; inset: 0; z-index: 950;
   background: rgba(0,0,0,0.55);
   align-items: flex-start; justify-content: center;
   padding: 80px 16px 40px;
@@ -2011,7 +2044,7 @@ body.has-player #content { padding-bottom: 80px; }
 
 /* ── Login overlay ──────────────────────────────────────────────────────── */
 #login-overlay {
-  position: fixed; inset: 0; z-index: 9000;
+  position: fixed; inset: 0; z-index: 900;
   background: var(--bg);
   display: flex; align-items: center; justify-content: center;
   padding: 20px;
@@ -2031,7 +2064,7 @@ body.has-player #content { padding-bottom: 80px; }
 
 /* ── Setup wizard (full-page) ───────────────────────────────────────────── */
 #setup-overlay {
-  position: fixed; inset: 0; z-index: 9000;
+  position: fixed; inset: 0; z-index: 900;
   background: var(--bg);
   overflow-y: auto;
   display: none;

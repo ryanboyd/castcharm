@@ -104,6 +104,11 @@ const Player = (() => {
     return '<polygon points="5 3 19 12 5 21 5 3"/>';
   }
 
+  function _resumeIcon() {
+    // Play triangle shifted right with a vertical bar on the left — indicates "continue from here"
+    return '<line x1="4" y1="4" x2="4" y2="20" stroke-width="2.5"/><polygon points="8 3 21 12 8 21 8 3"/>';
+  }
+
   function _pauseIcon() {
     return '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>';
   }
@@ -132,6 +137,9 @@ const Player = (() => {
       if (playing && epId === _currentEp.id) {
         icon.innerHTML = _pauseIcon();
         btn.title = "Pause";
+      } else if (btn.dataset.resumable === "1") {
+        icon.innerHTML = _resumeIcon();
+        btn.title = "Resume";
       } else {
         icon.innerHTML = _playIcon();
         btn.title = "Play";
@@ -412,5 +420,5 @@ const Player = (() => {
     _wire();
   }
 
-  return { init, play, togglePause, seek, currentId, isPlaying, setThreshold, syncPlayBtns: _syncPlayBtns };
+  return { init, play, togglePause, seek, currentId, isPlaying, setThreshold, syncPlayBtns: _syncPlayBtns, resumeIcon: _resumeIcon, playIcon: _playIcon };
 })();

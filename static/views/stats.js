@@ -685,8 +685,8 @@ function _durationAreaChart(durationsSeconds) {
   const maxY = Math.max(...smoothed, 1);
 
   // SVG layout
-  const W = 300, H = 108;
-  const ml = 4, mr = 4, mt = 14, mb = 20;
+  const W = 300, H = 112;
+  const ml = 4, mr = 4, mt = 14, mb = 24;
   const pw = W - ml - mr, ph = H - mt - mb;
   const baseline = mt + ph;
   const xPos = m => ml + (m / (numBins * binSize)) * pw;
@@ -716,7 +716,7 @@ function _durationAreaChart(durationsSeconds) {
     { x: xPos(Math.min(maxVal, chartMax)),  t: fmt(maxVal),  anchor: "end"    },
   ];
   const xLabels = labelCandidates.filter((c, i, arr) =>
-    arr.every((o, j) => j === i || Math.abs(o.x - c.x) > 28)
+    arr.every((o, j) => j === i || Math.abs(o.x - c.x) > 36)
   );
 
   return `
@@ -728,8 +728,8 @@ function _durationAreaChart(durationsSeconds) {
               style="stroke:var(--primary);stroke-width:1;stroke-dasharray:3,2;opacity:0.45"/>
         <line x1="${sdHighX.toFixed(1)}" y1="${mt}" x2="${sdHighX.toFixed(1)}" y2="${baseline}"
               style="stroke:var(--primary);stroke-width:1;stroke-dasharray:3,2;opacity:0.45"/>
-        <text x="${sdLowX.toFixed(1)}" y="${mt - 2}" style="fill:var(--text-3);font-size:7px;text-anchor:middle">−1σ</text>
-        <text x="${sdHighX.toFixed(1)}" y="${mt - 2}" style="fill:var(--text-3);font-size:7px;text-anchor:middle">+1σ</text>
+        <text x="${sdLowX.toFixed(1)}" y="${mt - 2}" style="fill:var(--text-3);font-size:8px;text-anchor:middle">−1σ</text>
+        <text x="${sdHighX.toFixed(1)}" y="${mt - 2}" style="fill:var(--text-3);font-size:8px;text-anchor:middle">+1σ</text>
       ` : ""}
       <path d="${areaPath}" style="fill:var(--primary);opacity:0.22"/>
       <path d="${linePath}" style="fill:none;stroke:var(--primary);stroke-width:1.5;stroke-linejoin:round"/>
@@ -737,8 +737,8 @@ function _durationAreaChart(durationsSeconds) {
             style="stroke:var(--primary);stroke-width:1.5;opacity:0.65"/>
       <line x1="${ml}" y1="${baseline}" x2="${W - mr}" y2="${baseline}" style="stroke:var(--border);stroke-width:1"/>
       ${xLabels.map(({x, t, anchor, bold}) =>
-        `<text x="${x.toFixed(1)}" y="${H - 4}"
-               style="fill:${bold ? 'var(--text-2)' : 'var(--text-3)'};font-size:8px;text-anchor:${anchor}${bold ? ';font-weight:600' : ''}">${t}</text>`
+        `<text x="${x.toFixed(1)}" y="${H - 3}"
+               style="fill:${bold ? 'var(--text-2)' : 'var(--text-3)'};font-size:10px;text-anchor:${anchor}${bold ? ';font-weight:600' : ''}">${t}</text>`
       ).join("")}
     </svg>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:4px;margin-top:10px">
@@ -810,16 +810,16 @@ function _donutChart(items, fmtVal) {
 
   const legend = slices.map((s, i) => {
     const pct = Math.round(s.value / total * 100);
-    return `<div style="display:flex;align-items:baseline;gap:6px;font-size:11px;min-width:0;margin-bottom:5px">
-      <span style="width:9px;height:9px;border-radius:2px;background:${_DONUT_COLORS[i % _DONUT_COLORS.length]};flex-shrink:0;margin-top:1px"></span>
-      <span style="color:var(--text-2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${s.label}</span>
+    return `<div style="display:flex;align-items:flex-start;gap:6px;font-size:11px;min-width:0;margin-bottom:5px">
+      <span style="width:9px;height:9px;border-radius:2px;background:${_DONUT_COLORS[i % _DONUT_COLORS.length]};flex-shrink:0;margin-top:2px"></span>
+      <span style="color:var(--text-2);flex:1;min-width:0;line-height:1.35">${s.label}</span>
       <span style="color:var(--text-3);flex-shrink:0;font-variant-numeric:tabular-nums">${pct}%</span>
       <span style="color:var(--text-3);flex-shrink:0;font-variant-numeric:tabular-nums;min-width:48px;text-align:right">${fmtVal(s.value)}</span>
     </div>`;
   }).join("");
 
   return `<div style="display:flex;flex-wrap:wrap;align-items:flex-start;gap:16px">
-    <svg viewBox="0 0 ${CX*2} ${CY*2}" style="width:100%;max-width:${CX*2}px;height:auto;display:block;flex-shrink:0">${paths}</svg>
+    <svg viewBox="0 0 ${CX*2} ${CY*2}" style="width:100%;max-width:${CX*2}px;height:auto;display:block;flex-shrink:0;margin:0 auto">${paths}</svg>
     <div style="flex:1;min-width:140px;align-self:center">${legend}</div>
   </div>`;
 }
