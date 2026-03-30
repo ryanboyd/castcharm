@@ -195,6 +195,25 @@ window.togglePanel = function (id) {
 };
 
 // ============================================================
+// Dropdown viewport boundary detection
+// ============================================================
+// Reposition a dropdown element so it stays within the viewport.
+// Resets left/right first to measure the natural position, then
+// flips if the dropdown would be clipped at the right or left edge.
+function positionDropdown(el) {
+  el.style.right = "";
+  el.style.left = "";
+  const rect = el.getBoundingClientRect();
+  if (rect.right > window.innerWidth - 8) {
+    el.style.right = "0";
+    el.style.left = "auto";
+  } else if (rect.left < 8) {
+    el.style.left = "0";
+    el.style.right = "auto";
+  }
+}
+
+// ============================================================
 // Animated removal
 // ============================================================
 /**

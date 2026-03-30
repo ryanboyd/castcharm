@@ -190,7 +190,7 @@ function _syncHiddenBadge(delta) {
 // Build the download button HTML for a given feed state (used on initial render and after poll).
 function _buildDlBtnHtml(feed, queueCount = 0) {
   const dlIcon = svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
-  const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
+  const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
   const caret = svg('<polyline points="6 9 12 15 18 9"/>');
 
   // Build the download button(s).
@@ -666,7 +666,7 @@ async function viewFeedDetail(feedId) {
           <div style="border-bottom:1px solid var(--border);padding-top:10px">
             <div style="display:flex;align-items:center;gap:8px;padding:0 12px 8px">
               <input class="form-control" id="ep-filter" placeholder="Filter by title…"
-                     style="flex:1;max-width:260px;height:30px;font-size:13px"
+                     style="flex:1;max-width:min(260px, calc(100vw - 160px));height:30px;font-size:13px"
                      oninput="_filterEpisodes()" />
               <button class="btn btn-ghost btn-sm" id="btn-sort-order" title="Toggle sort order">
                 Sort Oldest First
@@ -1484,7 +1484,7 @@ function episodeRow(ep, feed) {
   const moreDropdown = `
   <div class="ep-more-wrap" onclick="event.stopPropagation()">
     <button class="btn btn-ghost btn-sm btn-icon ep-more-btn" title="More options"
-            onclick="const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))">
+            onclick="const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))">
       ${svg('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>')}
     </button>
     <div class="ep-more-dropdown">

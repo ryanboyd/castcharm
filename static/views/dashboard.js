@@ -216,7 +216,7 @@ async function viewDashboard() {
                   </div>
                   <div class="activity-info">
                     <div class="activity-title truncate" style="color:var(--text)">${f.title || f.url}</div>
-                    <div class="activity-sub" style="color:var(--error)">${(f.last_error || "").slice(0, 80)}</div>
+                    <div class="activity-sub truncate" style="color:var(--error);max-width:100%">${escHTML((f.last_error || "").slice(0, 120))}</div>
                   </div>
                 </div>`).join("");
             })()}
