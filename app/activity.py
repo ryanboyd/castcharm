@@ -9,6 +9,7 @@ _active_syncs: set[int] = set()
 _pending_syncs: set[int] = set()  # queued but not yet started
 _xml_regenerating: bool = False
 _opml_generating: bool = False
+_autoclean_running: bool = False
 
 
 def mark_sync_queued(feed_id: int) -> None:
@@ -70,3 +71,20 @@ def is_xml_regenerating() -> bool:
 def is_opml_generating() -> bool:
     with _lock:
         return _opml_generating
+
+
+def mark_autoclean_start() -> None:
+    global _autoclean_running
+    with _lock:
+        _autoclean_running = True
+
+
+def mark_autoclean_done() -> None:
+    global _autoclean_running
+    with _lock:
+        _autoclean_running = False
+
+
+def is_autoclean_running() -> bool:
+    with _lock:
+        return _autoclean_running

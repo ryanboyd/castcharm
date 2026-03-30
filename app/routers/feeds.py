@@ -237,6 +237,8 @@ def add_feed(body: FeedCreate, background_tasks: BackgroundTasks, db: Session = 
     db.refresh(feed)
 
     log.info("Feed added: %s (%s)", feed.title or feed.url, feed.url)
+    from app.scheduler import schedule_feed
+    schedule_feed(feed.id)
     # Sync episodes in background
     background_tasks.add_task(_bg_sync, feed.id)
 
@@ -1060,12 +1062,6 @@ def _bg_sync(feed_id: int):
         except Exception:
             pass  # best-effort
         log.info("Sync complete: %s (id=%d)", feed.title or feed.url, feed_id)
-        # Auto-cleanup: delete oldest files beyond keep_latest limit
-        try:
-            from app.cleanup import run_keep_latest_cleanup
-            run_keep_latest_cleanup(primary_id, db)
-        except Exception:
-            pass  # cleanup is best-effort
     finally:
         mark_sync_done(feed_id)
         db.close()
@@ -1130,6 +1126,8 @@ def add_supplementary(feed_id: int, body: FeedCreate, background_tasks: Backgrou
     db.commit()
     db.refresh(sub)
     log.info("Supplementary feed linked to %s (id=%d): %s", primary.title or primary.url, feed_id, body.url)
+    from app.scheduler import schedule_feed
+    schedule_feed(sub.id)
     background_tasks.add_task(_bg_sync, sub.id)
     return _feed_out(sub, db)
 
@@ -1279,12 +1277,28 @@ async def commit_feed_xml(
 
 @router.get("/{feed_id}/cleanup-preview")
 def cleanup_preview(feed_id: int, db: Session = Depends(get_db)):
-    """Return how many files would be deleted by keep_latest cleanup without deleting them."""
+    """Return how many files would be deleted by cleanup without deleting them."""
     from app.cleanup import preview_keep_latest_cleanup
     feed = db.query(Feed).filter(Feed.id == feed_id).first()
     if not feed:
         raise HTTPException(status_code=404, detail="Feed not found")
     return preview_keep_latest_cleanup(feed_id, db)
+
+
+@router.post("/{feed_id}/autoclean/run")
+def run_feed_autoclean(feed_id: int, db: Session = Depends(get_db)):
+    """Immediately run auto-cleanup for a specific feed."""
+    from app.cleanup import run_keep_latest_cleanup
+    from app.activity import mark_autoclean_start, mark_autoclean_done
+    feed = db.query(Feed).filter(Feed.id == feed_id).first()
+    if not feed:
+        raise HTTPException(status_code=404, detail="Feed not found")
+    mark_autoclean_start()
+    try:
+        deleted = run_keep_latest_cleanup(feed_id, db)
+    finally:
+        mark_autoclean_done()
+    return {"deleted": len(deleted)}
 
 
 @router.post("/from-xml", response_model=FeedOut, status_code=201)
@@ -1442,6 +1456,10 @@ async def import_opml(
                 feed.last_error = str(e)
             db.commit()
             db.refresh(feed)
+            from app.scheduler import schedule_feed
+            from app.activity import mark_sync_queued
+            schedule_feed(feed.id)
+            mark_sync_queued(feed.id)
             background_tasks.add_task(_bg_sync, feed.id)
             added += 1
         except Exception:

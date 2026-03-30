@@ -51,6 +51,13 @@ async function viewSettings() {
             ${toggle("Show Suggested Listening", "show_suggested_listening",
               settings.show_suggested_listening ?? true,
               "Shows up to 3 random unplayed downloaded episodes per duration category on the dashboard.")}
+            <div class="form-group">
+              <label class="form-label">Episode Page Size</label>
+              <input class="form-control" name="episode_page_size" type="number"
+                     min="10" value="${settings.episode_page_size ?? 10000}"
+                     data-numeric="1" style="max-width:160px" />
+              <div class="form-hint">How many episodes to load at a time on the feed page. A "Load more" button appears when there are additional episodes. Default is 10,000 (effectively loads all but handles extremely large feeds).</div>
+            </div>
           </div>
         </div>
 
@@ -77,33 +84,67 @@ async function viewSettings() {
                      min="1" max="10" value="${settings.max_concurrent_downloads}" data-numeric="1"
                      style="max-width:120px" />
             </div>
-            <div class="form-group">
-              <label class="form-label">Keep Latest Episodes (Global)</label>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--text-2)">
-                <input type="checkbox" id="chk-keep-latest" style="width:16px;height:16px;cursor:pointer"
-                       ${settings.keep_latest ? "checked" : ""}
-                       onchange="document.getElementById('keep-latest-cfg').style.display=this.checked?'':'none'" />
-                Enable auto-cleanup
-              </label>
-              <div id="keep-latest-cfg" style="${settings.keep_latest ? "" : "display:none"}">
-                <input class="form-control" name="keep_latest" type="number"
-                       min="1" value="${settings.keep_latest ?? 10}" data-numeric="1"
-                       style="max-width:120px;margin-bottom:6px" />
-                <div class="form-hint" style="color:var(--warning);margin-bottom:12px">
-                  ⚠ Only the N most recently downloaded episodes per podcast are kept. Older files are deleted automatically after each sync.
+            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0 16px" />
+            <div class="form-section-label">Auto-cleanup</div>
+
+            ${toggle("Enable auto-cleanup", "autoclean_enabled",
+              settings.autoclean_enabled ?? false,
+              "Automatically delete episode files to keep your library within a set size. Runs on a daily schedule.")}
+            <div id="autoclean-cfg" style="${settings.autoclean_enabled ? "" : "display:none"}">
+              <div class="form-hint" style="color:var(--warning);margin-bottom:6px;margin-left:40px">⚠ This permanently deletes audio files from disk.</div>
+
+              <div class="form-group" style="margin-left:40px">
+                <label class="form-label">Mode</label>
+                <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+                  <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;color:var(--text-2)">
+                    <input type="radio" name="autoclean_mode" value="unplayed"
+                           ${(settings.autoclean_mode || "unplayed") === "unplayed" ? "checked" : ""}
+                           style="margin-top:3px;flex-shrink:0"
+                           onchange="_updateAutocleanModeHints()" />
+                    <span>
+                      <strong style="color:var(--text)">Keep unplayed episodes</strong><br>
+                      <span style="font-size:11px;color:var(--text-3)">Deletes any episode you've fully played. Partially listened episodes are never deleted.</span>
+                    </span>
+                  </label>
+                  <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;color:var(--text-2)">
+                    <input type="radio" name="autoclean_mode" value="recent"
+                           ${(settings.autoclean_mode || "unplayed") === "recent" ? "checked" : ""}
+                           style="margin-top:3px;flex-shrink:0"
+                           onchange="_updateAutocleanModeHints()" />
+                    <span>
+                      <strong style="color:var(--text)">Keep N most recent episodes</strong><br>
+                      <span style="font-size:11px;color:var(--text-3)">Deletes the oldest downloads once the per-podcast count exceeds N. Unplayed episodes are never deleted.</span>
+                    </span>
+                  </label>
                 </div>
-                ${toggle("Keep all unplayed episodes", "keep_unplayed",
-                  settings.keep_unplayed ?? true,
-                  "When Keep Latest is active, unplayed episodes are protected from cleanup regardless of age or count. Only played episodes count toward the limit.")}
+              </div>
+
+              <div id="autoclean-count-row" style="margin-left:40px;${(settings.autoclean_mode || "unplayed") === "unplayed" ? "display:none" : ""}">
+                <div class="form-group">
+                  <label class="form-label">Keep count (N)</label>
+                  <input class="form-control" name="keep_latest" type="number"
+                         min="1" value="${settings.keep_latest ?? 10}" data-numeric="1"
+                         style="max-width:120px" />
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-left:40px">
+                <label class="form-label">Run time</label>
+                <input class="form-control" name="autoclean_time" type="time"
+                       value="${settings.autoclean_time || "02:00"}"
+                       style="max-width:140px" />
+                <div class="form-hint">Cleanup runs once per day at this time (in your configured timezone). If the app restarts after this time, the next run will be the following day.</div>
+              </div>
+
+              <div style="margin-left:40px;margin-bottom:12px">
+                <button type="button" class="btn btn-ghost btn-sm" id="btn-run-autoclean-now"
+                        onclick="_runAutocleanNow()">
+                  ${svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')}
+                  Run cleanup now
+                </button>
               </div>
             </div>
-            <div class="form-group">
-              <label class="form-label">Episode Page Size</label>
-              <input class="form-control" name="episode_page_size" type="number"
-                     min="10" value="${settings.episode_page_size ?? 10000}"
-                     data-numeric="1" style="max-width:160px" />
-              <div class="form-hint">How many episodes to load at a time on the feed page. A "Load more" button appears when there are additional episodes. Default is 10,000 (effectively loads all but handles extremely large feeds).</div>
-            </div>
+
             <div class="form-group">
               <label class="form-label">Max Log Entries</label>
               <input class="form-control" name="log_max_entries" type="number"
@@ -415,6 +456,13 @@ async function viewSettings() {
   _wireToggleVisibility(form, "download_window_enabled", "download-window-cfg");
   _wireToggleVisibility(form, "scheduled_xml_enabled", "xml-regen-cfg");
   _wireToggleVisibility(form, "scheduled_opml_enabled", "opml-export-cfg");
+  _wireToggleVisibility(form, "autoclean_enabled", "autoclean-cfg");
+  form.querySelector('input[name="autoclean_enabled"]')?.addEventListener("change", function() {
+    if (this.checked) {
+      const unplayedRadio = form.querySelector('input[name="autoclean_mode"][value="unplayed"]');
+      if (unplayedRadio) { unplayedRadio.checked = true; _updateAutocleanModeHints(); }
+    }
+  });
 
   // Dirty tracking — reset on each visit, set on any change
   window._settingsDirty = false;
@@ -423,6 +471,13 @@ async function viewSettings() {
   // Expose save logic so the navigation guard can call it programmatically
   window._settingsSave = async function() {
     const raw = collectForm(form);
+
+    // Validate autoclean: mode="recent" requires a keep_latest count
+    if (raw.autoclean_enabled && (raw.autoclean_mode || "unplayed") === "recent" && !raw.keep_latest) {
+      Toast.error("Auto-cleanup mode 'Keep N most recent' requires a keep count");
+      return false;
+    }
+
     const id3Mapping = {};
     for (const [k, v] of Object.entries(raw)) {
       if (k.startsWith("id3_") && v) id3Mapping[k.slice(4)] = v;
@@ -439,9 +494,12 @@ async function viewSettings() {
       default_id3_mapping: id3Mapping,
       log_max_entries: Number(raw.log_max_entries) || 500,
       episode_page_size: Number(raw.episode_page_size) || 10000,
-      keep_latest: document.getElementById("chk-keep-latest")?.checked && raw.keep_latest
+      autoclean_enabled: raw.autoclean_enabled ?? false,
+      autoclean_mode: raw.autoclean_mode || "unplayed",
+      autoclean_time: raw.autoclean_time || "02:00",
+      keep_latest: (raw.autoclean_enabled && (raw.autoclean_mode || "unplayed") === "recent" && raw.keep_latest)
         ? Number(raw.keep_latest) : null,
-      keep_unplayed: raw.keep_unplayed ?? true,
+      keep_unplayed: true,
       auto_played_threshold: Number(raw.auto_played_threshold) ?? 95,
       show_suggested_listening: raw.show_suggested_listening ?? true,
       timezone: document.getElementById("settings-tz-input")?.value || "UTC",
@@ -473,6 +531,42 @@ async function viewSettings() {
   });
 
 }
+
+// ── Auto-cleanup helpers ─────────────────────────────────────────────────────
+
+window._updateAutocleanModeHints = function() {
+  const unplayed = document.querySelector('input[name="autoclean_mode"][value="unplayed"]')?.checked;
+  const row = document.getElementById("autoclean-count-row");
+  if (row) row.style.display = unplayed ? "none" : "";
+  if (!unplayed) {
+    // "recent" mode: ensure keep_latest is valid
+    const input = document.querySelector('[name="keep_latest"]');
+    if (input && !input.value) input.value = "10";
+  }
+};
+
+window._runAutocleanNow = async function() {
+  const mode = document.querySelector('input[name="autoclean_mode"]:checked')?.value || "unplayed";
+  const msg = mode === "unplayed"
+    ? "This will permanently delete files for all fully-played episodes across every podcast. Continue?"
+    : "This will permanently delete episode files beyond the keep count across every podcast. Continue?";
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById("btn-run-autoclean-now");
+  if (!btn) return;
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.textContent = "Running…";
+  try {
+    const res = await API.runAutocleanNow();
+    Toast.success(`Cleanup complete — ${res.deleted} file(s) deleted`);
+  } catch (e) {
+    Toast.error(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+};
 
 // ── Schedule toggle visibility ───────────────────────────────────────────────
 

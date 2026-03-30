@@ -97,19 +97,35 @@ def update_settings(body: GlobalSettingsUpdate, db: Session = Depends(get_db)):
         "scheduled_xml_enabled", "scheduled_xml_time",
         "scheduled_opml_enabled", "scheduled_opml_time",
         "scheduled_sync_enabled", "scheduled_sync_time",
+        "autoclean_enabled", "autoclean_mode", "keep_latest", "autoclean_time",
         "timezone",
     }
     changed = set(updates.keys())
     if changed & _schedule_fields:
-        from app.scheduler import schedule_xml_regen, schedule_opml_export, schedule_daily_sync
+        from app.scheduler import schedule_xml_regen, schedule_opml_export, schedule_daily_sync, schedule_autoclean
         if changed & {"scheduled_xml_enabled", "scheduled_xml_time", "timezone"}:
             schedule_xml_regen()
         if changed & {"scheduled_opml_enabled", "scheduled_opml_time", "timezone"}:
             schedule_opml_export()
         if changed & {"scheduled_sync_enabled", "scheduled_sync_time", "timezone"}:
             schedule_daily_sync()
+        if changed & {"autoclean_enabled", "autoclean_mode", "keep_latest", "autoclean_time", "timezone"}:
+            schedule_autoclean()
     log.info("Settings updated: %s", ", ".join(updates.keys()))
     return settings
+
+
+@router.post("/autoclean/run")
+def run_autoclean_now(db: Session = Depends(get_db)):
+    """Immediately run auto-cleanup across all feeds."""
+    from app.cleanup import run_autoclean_all_feeds
+    from app.activity import mark_autoclean_start, mark_autoclean_done
+    mark_autoclean_start()
+    try:
+        deleted = run_autoclean_all_feeds(db)
+    finally:
+        mark_autoclean_done()
+    return {"deleted": deleted}
 
 
 @router.get("/logs")

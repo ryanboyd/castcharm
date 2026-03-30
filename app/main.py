@@ -227,7 +227,7 @@ def get_status():
             db.query(func.count(Episode.id)).filter(Episode.status == "failed").scalar() or 0
         )
 
-        from app.activity import get_syncing_count, get_syncing_feed_ids, is_xml_regenerating, is_opml_generating
+        from app.activity import get_syncing_count, get_syncing_feed_ids, is_xml_regenerating, is_opml_generating, is_autoclean_running
         from app.scheduler import get_next_run_any, get_download_window_status
         from app.importer import get_active_import_count
 
@@ -262,6 +262,7 @@ def get_status():
             syncing_feed_ids=get_syncing_feed_ids(),
             xml_regenerating=is_xml_regenerating(),
             opml_generating=is_opml_generating(),
+            autoclean_running=is_autoclean_running(),
             **dict(zip(("download_window_paused", "download_window_next_open"), get_download_window_status())),
         )
     finally:

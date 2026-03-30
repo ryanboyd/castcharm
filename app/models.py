@@ -57,6 +57,12 @@ class GlobalSettings(Base):
     download_window_enabled = Column(Boolean, default=False)
     download_window_start = Column(String, default="21:00")
     download_window_end = Column(String, default="06:00")
+    # Auto-cleanup: whether scheduled cleanup is enabled
+    autoclean_enabled = Column(Boolean, default=False)
+    # Auto-cleanup mode: "recent" = keep N most recent downloads; "unplayed" = delete all played
+    autoclean_mode = Column(String, default="unplayed")
+    # Scheduled time to run auto-cleanup (HH:MM in user's timezone)
+    autoclean_time = Column(String, default="02:00")
 
 
 class AuthSession(Base):
@@ -121,6 +127,11 @@ class Feed(Base):
     keep_latest = Column(Integer, nullable=True)
     # When True, unplayed episodes are exempt from keep_latest cleanup
     keep_unplayed = Column(Boolean, default=True, nullable=True)
+    # Per-feed standalone autoclean (only active when global autoclean is disabled)
+    autoclean_enabled = Column(Boolean, default=False, nullable=True)
+    autoclean_mode = Column(String, nullable=True)  # "recent" | "unplayed"; None = inherit global
+    # When True, this feed is skipped by the global scheduled autoclean job
+    autoclean_exclude = Column(Boolean, default=False, nullable=True)
 
     # Status
     active = Column(Boolean, default=True)

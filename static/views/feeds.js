@@ -140,11 +140,32 @@ function _setCardPip(card, dl, sy) {
   if (pip.innerHTML !== next) pip.innerHTML = next;
 }
 
+let _prevSyncIds = new Set();
+
+async function _refreshFeedCard(feedId) {
+  const grid = document.getElementById("feeds-grid");
+  if (!grid) return;
+  try {
+    const f = await API.getFeed(feedId);
+    const card = grid.querySelector(`.feed-card[data-id="${feedId}"]`);
+    if (!card) return;
+    const meta = card.querySelector(".feed-card-meta");
+    if (meta) meta.innerHTML = _feedCardMeta(f);
+  } catch (_) {}
+}
+
 function _updateFeedActivityPips(s) {
   const grid = document.getElementById("feeds-grid");
   if (!grid) return;
   const dlIds   = new Set(s.downloading_feed_ids || []);
   const syncIds = new Set(s.syncing_feed_ids || []);
+
+  // Refresh any card that just finished syncing
+  for (const id of _prevSyncIds) {
+    if (!syncIds.has(id)) _refreshFeedCard(id);
+  }
+  _prevSyncIds = syncIds;
+
   for (const card of grid.querySelectorAll(".feed-card[data-id]")) {
     const id = Number(card.dataset.id);
     _setCardPip(card, dlIds.has(id), syncIds.has(id));
@@ -152,6 +173,7 @@ function _updateFeedActivityPips(s) {
 }
 
 async function viewFeeds() {
+  _prevSyncIds = new Set();
   // Refresh feed cards automatically when background activity finishes.
   window._onSyncIdle    = _refreshFeedsGrid;
   window._onDownloadIdle = _refreshFeedsGrid;

@@ -59,6 +59,7 @@ const API = {
   // ── Settings ────────────────────────────────────────────────
   getSettings:      () =>  API.get("/api/settings"),
   putSettings:      (b) => API.put("/api/settings", b),
+  runAutocleanNow:  ()  => API.post("/api/settings/autoclean/run", {}),
   getID3Tags:       () =>  API.get("/api/settings/id3-tags"),
   getRSSSources:    () =>  API.get("/api/settings/rss-sources"),
   getServerTimezone: () => API.get("/api/settings/server-timezone"),
@@ -82,7 +83,8 @@ const API = {
   markAllPlayed: (id) =>      API.post(`/api/feeds/${id}/mark-all-played`),
   renumberFeed: (id) =>       API.post(`/api/feeds/${id}/renumber`),
   applyFileUpdates: (id) =>   API.post(`/api/feeds/${id}/apply-file-updates`),
-  cleanupPreview: (id) =>     API.get(`/api/feeds/${id}/cleanup-preview`),
+  cleanupPreview:    (id) => API.get(`/api/feeds/${id}/cleanup-preview`),
+  runFeedAutoclean:  (id) => API.post(`/api/feeds/${id}/autoclean/run`, {}),
   getImportStatus: (id) =>    API.get(`/api/feeds/${id}/import-status`),
   previewImport: (id, directory) => API.post(`/api/feeds/${id}/import-preview`, { directory }),
   commitImport:  (id, items) =>     API.post(`/api/feeds/${id}/import-stage`, { items }),

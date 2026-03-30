@@ -20,6 +20,7 @@ def start_scheduler():
         schedule_xml_regen()
         schedule_opml_export()
         schedule_daily_sync()  # may remove per-feed jobs if daily mode is active
+        schedule_autoclean()
 
 
 def stop_scheduler():
@@ -367,6 +368,49 @@ def schedule_opml_export():
 
 
 # ---------------------------------------------------------------------------
+# Scheduled auto-cleanup
+# ---------------------------------------------------------------------------
+
+def _run_scheduled_autoclean():
+    """Run keep_latest cleanup across all active feeds on schedule."""
+    from app.database import SessionLocal
+    from app.cleanup import run_autoclean_all_feeds
+    from app.activity import mark_autoclean_start, mark_autoclean_done
+
+    mark_autoclean_start()
+    db = SessionLocal()
+    try:
+        run_autoclean_all_feeds(db)
+    finally:
+        db.close()
+        mark_autoclean_done()
+
+
+def schedule_autoclean():
+    """Create/update the daily auto-cleanup cron job."""
+    if _scheduler.get_job("scheduled_autoclean"):
+        _scheduler.remove_job("scheduled_autoclean")
+
+    gs = _read_settings()
+    if not gs or not gs.autoclean_enabled:
+        return  # autoclean disabled
+    mode = gs.autoclean_mode or "unplayed"
+    if mode != "unplayed" and not gs.keep_latest:
+        return  # "recent" mode requires a keep_latest count
+
+    hour, minute = _parse_time(gs.autoclean_time or "02:00")
+    tz = gs.timezone or "UTC"
+    _scheduler.add_job(
+        _run_scheduled_autoclean,
+        CronTrigger(hour=hour, minute=minute, timezone=tz),
+        id="scheduled_autoclean",
+        replace_existing=True,
+        misfire_grace_time=3600,
+    )
+    log.info("Auto-cleanup scheduled at %02d:%02d (%s)", hour, minute, tz)
+
+
+# ---------------------------------------------------------------------------
 # Status helpers
 # ---------------------------------------------------------------------------
 
@@ -378,8 +422,12 @@ def get_next_run(feed_id: int) -> datetime | None:
 
 
 def get_next_run_any() -> datetime | None:
-    """Return the earliest upcoming run time across all scheduled jobs."""
-    times = [j.next_run_time for j in _scheduler.get_jobs() if j.next_run_time]
+    """Return the earliest upcoming sync run time, excluding maintenance-only jobs."""
+    maintenance_ids = {"scheduled_xml", "scheduled_opml", "scheduled_autoclean"}
+    times = [
+        j.next_run_time for j in _scheduler.get_jobs()
+        if j.next_run_time and j.id not in maintenance_ids
+    ]
     return min(times) if times else None
 
 

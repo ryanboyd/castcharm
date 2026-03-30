@@ -89,6 +89,12 @@ def _migrate_db():
         ("global_settings", "download_window_enabled",      "BOOLEAN DEFAULT 0"),
         ("global_settings", "download_window_start",        "VARCHAR DEFAULT '21:00'"),
         ("global_settings", "download_window_end",          "VARCHAR DEFAULT '06:00'"),
+        ("global_settings", "autoclean_enabled",             "BOOLEAN DEFAULT 0"),
+        ("global_settings", "autoclean_mode",               "VARCHAR DEFAULT 'recent'"),
+        ("global_settings", "autoclean_time",               "VARCHAR DEFAULT '02:00'"),
+        ("feeds",           "autoclean_enabled",             "BOOLEAN DEFAULT 0"),
+        ("feeds",           "autoclean_mode",                "VARCHAR"),
+        ("feeds",           "autoclean_exclude",             "BOOLEAN DEFAULT 0"),
     ]
     with engine.connect() as conn:
         for table, column, col_def in migrations:

@@ -479,25 +479,62 @@ async function viewFeedDetail(feedId) {
               "Automatically queue new episodes when first detected. Overrides global setting.")}
 
             <div class="form-group">
-              <label class="form-label">Keep Latest Episodes</label>
-              <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;color:var(--text-2)">
-                <input type="checkbox" id="chk-feed-keep-latest" style="width:16px;height:16px;cursor:pointer"
-                       ${feed.keep_latest ? "checked" : ""}
-                       onchange="document.getElementById('feed-keep-latest-cfg').style.display=this.checked?'':'none'" />
-                Enable auto-cleanup for this feed
-              </label>
-              <div id="feed-keep-latest-cfg" style="${feed.keep_latest ? "" : "display:none"}">
-                <input class="form-control" name="keep_latest" type="number"
-                       min="1" value="${feed.keep_latest ?? 10}" data-numeric="1"
-                       style="max-width:120px;margin-bottom:6px" />
-                <div class="form-hint" style="color:var(--warning)">
-                  ⚠ Only the N most recently downloaded episodes are kept. Older files are deleted after each sync.
-                  <span id="cleanup-preview-info" style="color:var(--text-3)"></span>
+              <label class="form-label">Auto-cleanup</label>
+              ${settings.autoclean_enabled ? `
+                ${toggle("Exclude from auto-cleanup", "autoclean_exclude",
+                  feed.autoclean_exclude ?? false,
+                  "When excluded, this feed is skipped by the global scheduled cleanup.")}
+                <div class="form-hint" style="margin-top:4px">
+                  Global cleanup is enabled. Configure options in
+                  <a href="#/settings" style="color:var(--primary)">Settings → Storage</a>.
                 </div>
-                ${toggle("Keep all unplayed episodes", "keep_unplayed",
-                  feed.keep_unplayed !== null ? feed.keep_unplayed : settings.keep_unplayed ?? true,
-                  "Unplayed episodes are protected from cleanup — only played episodes count toward the limit.")}
-              </div>
+              ` : `
+                ${toggle("Enable auto-cleanup for this feed", "autoclean_enabled",
+                  feed.autoclean_enabled ?? false,
+                  "Automatically delete episode files on a schedule. Only active when global auto-cleanup is off.")}
+                <div id="feed-autoclean-cfg" style="${feed.autoclean_enabled ? "" : "display:none"};margin-left:40px">
+                  <div class="form-hint" style="color:var(--warning);margin-bottom:6px">⚠ This permanently deletes audio files from disk.</div>
+                  <div class="form-group" style="margin-bottom:10px">
+                    <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+                      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;color:var(--text-2)">
+                        <input type="radio" name="autoclean_mode" value="unplayed"
+                               ${(feed.autoclean_mode || "unplayed") === "unplayed" ? "checked" : ""}
+                               style="margin-top:3px;flex-shrink:0"
+                               onchange="_feedUpdateAutocleanMode()" />
+                        <span>
+                          <strong style="color:var(--text)">Keep unplayed episodes</strong><br>
+                          <span style="font-size:11px;color:var(--text-3)">Deletes any episode you've fully played. Partially listened episodes are never deleted.</span>
+                        </span>
+                      </label>
+                      <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;color:var(--text-2)">
+                        <input type="radio" name="autoclean_mode" value="recent"
+                               ${(feed.autoclean_mode || "unplayed") === "recent" ? "checked" : ""}
+                               style="margin-top:3px;flex-shrink:0"
+                               onchange="_feedUpdateAutocleanMode()" />
+                        <span>
+                          <strong style="color:var(--text)">Keep N most recent episodes</strong><br>
+                          <span style="font-size:11px;color:var(--text-3)">Deletes the oldest downloads once the count exceeds N. Unplayed episodes are never deleted.</span>
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                  <div id="feed-autoclean-count-row" style="${(feed.autoclean_mode || "unplayed") === "unplayed" ? "display:none" : ""}">
+                    <div class="form-group" style="margin-bottom:10px">
+                      <label class="form-label">Keep count (N)</label>
+                      <input class="form-control" name="keep_latest" type="number"
+                             min="1" value="${feed.keep_latest ?? 10}" data-numeric="1"
+                             style="max-width:120px" />
+                    </div>
+                  </div>
+                  <div style="margin-bottom:4px">
+                    <button type="button" class="btn btn-ghost btn-sm" id="btn-run-feed-autoclean"
+                            onclick="_runFeedAutocleanNow(${feed.id})">
+                      ${svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')}
+                      Run cleanup now
+                    </button>
+                  </div>
+                </div>
+              `}
             </div>
 
             <div class="divider"></div>
@@ -1248,22 +1285,18 @@ async function viewFeedDetail(feedId) {
     if (!active) window._bulkCancel();
   });
 
-  // Show cleanup preview when keep_latest input changes
-  const klInput = document.querySelector('[name="keep_latest"]');
-  if (klInput) {
-    const showPreview = async () => {
-      const val = klInput.value.trim();
-      const info = document.getElementById("cleanup-preview-info");
-      if (!info) return;
-      if (!val) { info.textContent = ""; return; }
-      try {
-        const p = await API.cleanupPreview(id);
-        info.textContent = p.would_delete > 0
-          ? ` — Enabling this now would delete ${p.would_delete} existing file${p.would_delete !== 1 ? "s" : ""}.`
-          : "";
-      } catch (_) {}
-    };
-    klInput.addEventListener("blur", showPreview);
+  // Wire per-feed autoclean toggle visibility
+  const feedAutocleanToggle = document.querySelector('[name="autoclean_enabled"]');
+  if (feedAutocleanToggle) {
+    feedAutocleanToggle.addEventListener("change", function() {
+      const cfg = document.getElementById("feed-autoclean-cfg");
+      if (cfg) cfg.style.display = this.checked ? "" : "none";
+      if (this.checked) {
+        // Default to "unplayed" mode when first enabling
+        const radio = document.querySelector('input[name="autoclean_mode"][value="unplayed"]');
+        if (radio) { radio.checked = true; _feedUpdateAutocleanMode(); }
+      }
+    });
   }
 
   // ID3 toggle visibility
@@ -1298,9 +1331,26 @@ async function viewFeedDetail(feedId) {
     };
     if (raw.download_path) payload.download_path = raw.download_path;
     if (raw.check_interval) payload.check_interval = raw.check_interval;
-    payload.keep_latest = document.getElementById("chk-feed-keep-latest")?.checked && raw.keep_latest
-      ? Number(raw.keep_latest) : null;
-    payload.keep_unplayed = raw.keep_unplayed ?? true;
+
+    // Validate per-feed autoclean: mode="recent" requires a count
+    if (!settings.autoclean_enabled && raw.autoclean_enabled
+        && (raw.autoclean_mode || "unplayed") === "recent" && !raw.keep_latest) {
+      Toast.error("Auto-cleanup mode 'Keep N most recent' requires a keep count");
+      return;
+    }
+
+    if (settings.autoclean_enabled) {
+      // Global autoclean is on — only the exclude toggle is shown
+      payload.autoclean_exclude = raw.autoclean_exclude ?? false;
+    } else {
+      // Per-feed autoclean — full UI is shown
+      payload.autoclean_exclude = false;
+      payload.autoclean_enabled = raw.autoclean_enabled ?? false;
+      payload.autoclean_mode    = raw.autoclean_mode || "unplayed";
+      payload.keep_latest = (raw.autoclean_enabled && (raw.autoclean_mode || "unplayed") === "recent" && raw.keep_latest)
+        ? Number(raw.keep_latest) : null;
+      payload.keep_unplayed = true;
+    }
 
     try {
       await API.updateFeed(id, payload);
@@ -1373,6 +1423,40 @@ function _sanitizeNotes(html) {
   });
   return doc.body.innerHTML;
 }
+
+window._feedUpdateAutocleanMode = function() {
+  const unplayed = document.querySelector('input[name="autoclean_mode"][value="unplayed"]')?.checked;
+  const row = document.getElementById("feed-autoclean-count-row");
+  if (row) row.style.display = unplayed ? "none" : "";
+  if (!unplayed) {
+    // "recent" mode: ensure keep_latest is valid
+    const input = document.querySelector('[name="keep_latest"]');
+    if (input && !input.value) input.value = "10";
+  }
+};
+
+window._runFeedAutocleanNow = async function(feedId) {
+  const mode = document.querySelector('input[name="autoclean_mode"]:checked')?.value || "unplayed";
+  const msg = mode === "unplayed"
+    ? "This will permanently delete files for all fully-played episodes in this podcast. Continue?"
+    : "This will permanently delete episode files beyond the keep count for this podcast. Continue?";
+  if (!confirm(msg)) return;
+
+  const btn = document.getElementById("btn-run-feed-autoclean");
+  if (!btn) return;
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.textContent = "Running…";
+  try {
+    const res = await API.runFeedAutoclean(feedId);
+    Toast.success(`Cleanup complete — ${res.deleted} file${res.deleted !== 1 ? "s" : ""} deleted`);
+  } catch (e) {
+    Toast.error(e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+};
 
 window._toggleEpNotes = function (id) {
   const row = document.getElementById(`ep-${id}`);
