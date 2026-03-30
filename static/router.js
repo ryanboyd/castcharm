@@ -237,6 +237,9 @@ async function updateStatus() {
       if (s.opml_generating) {
         items.push(_statusItem("active", "Exporting OPML", "Writing castcharm-export.opml…"));
       }
+      if (s.autoclean_running) {
+        items.push(_statusItem("active", "Running auto-cleanup", "Deleting episode files per cleanup settings…"));
+      }
 
       // — Persistent warnings —
       if (s.download_window_paused) {

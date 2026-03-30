@@ -91,6 +91,7 @@ async function viewSettings() {
               settings.autoclean_enabled ?? false,
               "Automatically delete episode files to keep your library within a set size. Runs on a daily schedule.")}
             <div id="autoclean-cfg" style="${settings.autoclean_enabled ? "" : "display:none"}">
+              <div class="form-hint" style="color:var(--warning);margin-bottom:6px;margin-left:40px">⚠ This permanently deletes audio files from disk.</div>
 
               <div class="form-group" style="margin-left:40px">
                 <label class="form-label">Mode</label>
@@ -132,13 +133,10 @@ async function viewSettings() {
                 <input class="form-control" name="autoclean_time" type="time"
                        value="${settings.autoclean_time || "02:00"}"
                        style="max-width:140px" />
-                <div class="form-hint">Cleanup runs once per day at this time (in your configured timezone).</div>
+                <div class="form-hint">Cleanup runs once per day at this time (in your configured timezone). If the app restarts after this time, the next run will be the following day.</div>
               </div>
 
               <div style="margin-left:40px;margin-bottom:12px">
-                <div class="form-hint" style="color:var(--warning);margin-bottom:10px">
-                  ⚠ This permanently deletes audio files from disk. Per-feed limits can be set on each feed's settings page.
-                </div>
                 <button type="button" class="btn btn-ghost btn-sm" id="btn-run-autoclean-now"
                         onclick="_runAutocleanNow()">
                   ${svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')}
@@ -497,9 +495,9 @@ async function viewSettings() {
       log_max_entries: Number(raw.log_max_entries) || 500,
       episode_page_size: Number(raw.episode_page_size) || 10000,
       autoclean_enabled: raw.autoclean_enabled ?? false,
-      autoclean_mode: raw.autoclean_mode || "recent",
+      autoclean_mode: raw.autoclean_mode || "unplayed",
       autoclean_time: raw.autoclean_time || "02:00",
-      keep_latest: (raw.autoclean_enabled && (raw.autoclean_mode || "recent") === "recent" && raw.keep_latest)
+      keep_latest: (raw.autoclean_enabled && (raw.autoclean_mode || "unplayed") === "recent" && raw.keep_latest)
         ? Number(raw.keep_latest) : null,
       keep_unplayed: true,
       auto_played_threshold: Number(raw.auto_played_threshold) ?? 95,

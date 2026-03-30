@@ -23,14 +23,14 @@ def _resolve_settings(feed: Feed, db: Session) -> tuple[int | None, str]:
 
     if gs and gs.autoclean_enabled:
         # Global autoclean governs all non-excluded feeds
-        mode = gs.autoclean_mode or "recent"
+        mode = gs.autoclean_mode or "unplayed"
         limit = gs.keep_latest if mode == "recent" else None
         return limit, mode
     else:
         # Per-feed standalone cleanup (only active when global autoclean is off)
         if not feed.autoclean_enabled:
             return None, "recent"
-        mode = feed.autoclean_mode or "recent"
+        mode = feed.autoclean_mode or "unplayed"
         limit = feed.keep_latest if mode == "recent" else None
         return limit, mode
 
@@ -63,7 +63,7 @@ def _to_delete_list(all_eps: list, limit: int | None, mode: str) -> list:
         return played_eps[limit:] if len(played_eps) > limit else []
 
 
-def _delete_files(to_delete: list, db: Session, feed_id: int, limit: int) -> list[int]:
+def _delete_files(to_delete: list, db: Session, feed_id: int, limit: int | None = None) -> list[int]:
     """Delete files and reset episode state for a list of episodes."""
     deleted_ids = []
     for ep in to_delete:
@@ -71,14 +71,17 @@ def _delete_files(to_delete: list, db: Session, feed_id: int, limit: int) -> lis
         if file_existed:
             try:
                 os.remove(ep.file_path)
-                base = os.path.splitext(ep.file_path)[0]
-                for ext in (".xml", ".jpg", ".png", ".webp"):
-                    sidecar = (ep.file_path + ext) if ext == ".xml" else (base + ext)
-                    if os.path.exists(sidecar):
-                        os.remove(sidecar)
             except OSError as e:
                 log.warning("cleanup: could not delete %s: %s", ep.file_path, e)
                 continue  # skip DB reset — file still exists on disk
+            base = os.path.splitext(ep.file_path)[0]
+            for ext in (".xml", ".jpg", ".png", ".webp"):
+                sidecar = (ep.file_path + ext) if ext == ".xml" else (base + ext)
+                try:
+                    if os.path.exists(sidecar):
+                        os.remove(sidecar)
+                except OSError as e:
+                    log.warning("cleanup: could not delete sidecar %s: %s", sidecar, e)
         # Reset DB state whether file was deleted or was already missing
         ep.status = "pending"
         ep.file_path = None
@@ -89,9 +92,10 @@ def _delete_files(to_delete: list, db: Session, feed_id: int, limit: int) -> lis
 
     if deleted_ids:
         db.commit()
+        limit_str = f" (limit={limit})" if limit is not None else ""
         log.info(
-            "cleanup for feed %d: removed %d episode(s) (limit=%d)",
-            feed_id, len(deleted_ids), limit,
+            "cleanup for feed %d: removed %d episode(s)%s",
+            feed_id, len(deleted_ids), limit_str,
         )
     return deleted_ids
 
@@ -116,7 +120,7 @@ def run_keep_latest_cleanup(feed_id: int, db: Session) -> list[int]:
     all_ids = get_group_feed_ids(db, feed_id)
     all_eps = _candidates(all_ids, db)
     to_delete = _to_delete_list(all_eps, limit, mode)
-    return _delete_files(to_delete, db, feed_id, limit or 0)
+    return _delete_files(to_delete, db, feed_id, limit)
 
 
 def preview_keep_latest_cleanup(feed_id: int, db: Session) -> dict:
@@ -146,7 +150,7 @@ def run_autoclean_all_feeds(db: Session) -> int:
     gs = db.query(GlobalSettings).first()
     if not gs or not gs.autoclean_enabled:
         return 0
-    mode = gs.autoclean_mode or "recent"
+    mode = gs.autoclean_mode or "unplayed"
     if mode != "unplayed" and not gs.keep_latest:
         return 0
 

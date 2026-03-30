@@ -119,7 +119,12 @@ def update_settings(body: GlobalSettingsUpdate, db: Session = Depends(get_db)):
 def run_autoclean_now(db: Session = Depends(get_db)):
     """Immediately run auto-cleanup across all feeds."""
     from app.cleanup import run_autoclean_all_feeds
-    deleted = run_autoclean_all_feeds(db)
+    from app.activity import mark_autoclean_start, mark_autoclean_done
+    mark_autoclean_start()
+    try:
+        deleted = run_autoclean_all_feeds(db)
+    finally:
+        mark_autoclean_done()
     return {"deleted": deleted}
 
 

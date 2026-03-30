@@ -35,7 +35,7 @@ class GlobalSettingsBase(BaseModel):
     download_window_start: str = "21:00"
     download_window_end: str = "06:00"
     autoclean_enabled: bool = False
-    autoclean_mode: str = "recent"
+    autoclean_mode: str = "unplayed"
     autoclean_time: str = "02:00"
 
 
@@ -248,6 +248,7 @@ class StatusOut(BaseModel):
     syncing_feed_ids: list[int] = []      # feed IDs currently syncing (active + pending)
     xml_regenerating: bool = False        # complete-feed.xml rebuild in progress
     opml_generating: bool = False         # OPML export in progress
+    autoclean_running: bool = False       # auto-cleanup job in progress
     download_window_paused: bool = False  # downloads paused (outside window)
     download_window_next_open: Optional[datetime] = None  # next time window opens
 

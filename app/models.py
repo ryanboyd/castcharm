@@ -60,7 +60,7 @@ class GlobalSettings(Base):
     # Auto-cleanup: whether scheduled cleanup is enabled
     autoclean_enabled = Column(Boolean, default=False)
     # Auto-cleanup mode: "recent" = keep N most recent downloads; "unplayed" = delete all played
-    autoclean_mode = Column(String, default="recent")
+    autoclean_mode = Column(String, default="unplayed")
     # Scheduled time to run auto-cleanup (HH:MM in user's timezone)
     autoclean_time = Column(String, default="02:00")
 

@@ -493,6 +493,7 @@ async function viewFeedDetail(feedId) {
                   feed.autoclean_enabled ?? false,
                   "Automatically delete episode files on a schedule. Only active when global auto-cleanup is off.")}
                 <div id="feed-autoclean-cfg" style="${feed.autoclean_enabled ? "" : "display:none"};margin-left:40px">
+                  <div class="form-hint" style="color:var(--warning);margin-bottom:6px">⚠ This permanently deletes audio files from disk.</div>
                   <div class="form-group" style="margin-bottom:10px">
                     <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
                       <label style="display:flex;align-items:flex-start;gap:8px;cursor:pointer;color:var(--text-2)">
@@ -526,9 +527,6 @@ async function viewFeedDetail(feedId) {
                     </div>
                   </div>
                   <div style="margin-bottom:4px">
-                    <div class="form-hint" style="color:var(--warning);margin-bottom:8px">
-                      ⚠ This permanently deletes audio files from disk.
-                    </div>
                     <button type="button" class="btn btn-ghost btn-sm" id="btn-run-feed-autoclean"
                             onclick="_runFeedAutocleanNow(${feed.id})">
                       ${svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')}
@@ -1333,6 +1331,14 @@ async function viewFeedDetail(feedId) {
     };
     if (raw.download_path) payload.download_path = raw.download_path;
     if (raw.check_interval) payload.check_interval = raw.check_interval;
+
+    // Validate per-feed autoclean: mode="recent" requires a count
+    if (!settings.autoclean_enabled && raw.autoclean_enabled
+        && (raw.autoclean_mode || "unplayed") === "recent" && !raw.keep_latest) {
+      Toast.error("Auto-cleanup mode 'Keep N most recent' requires a keep count");
+      return;
+    }
+
     if (settings.autoclean_enabled) {
       // Global autoclean is on — only the exclude toggle is shown
       payload.autoclean_exclude = raw.autoclean_exclude ?? false;
