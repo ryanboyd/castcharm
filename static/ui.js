@@ -151,9 +151,13 @@ function artImg(url, fallbackEmoji = "", size = "", paused = false) {
  * Handles all three states: currently playing (pause icon), resumable (|▶ icon), play from start (▶ icon).
  * Uses `ep-play-btn` + `data-ep-id` so Player._syncPlayBtns() keeps it live.
  */
-function epPlayBtn(ep, { extraClasses = "", onclick = `playEpisode(${ep.id})`, stopProp = true } = {}) {
+function epPlayBtn(ep, { extraClasses = "", onclick = null, stopProp = true } = {}) {
   const playing   = Player.currentId() === ep.id && Player.isPlaying();
   const resumable = !ep.played && (ep.play_position_seconds > 0);
+  // Default onclick: resume buttons pass true so playEpisode rewinds 5 seconds
+  if (onclick === null) {
+    onclick = resumable ? `playEpisode(${ep.id},true)` : `playEpisode(${ep.id})`;
+  }
   const icon = playing   ? svg('<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>')
              : resumable ? svg(Player.resumeIcon())
              :             svg(Player.playIcon());

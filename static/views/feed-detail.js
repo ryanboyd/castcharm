@@ -21,7 +21,7 @@ function _parseDurSecs(dur) {
 // ============================================================
 // Global playback helpers (used by dashboard, feed-detail, etc.)
 // ============================================================
-window.playEpisode = async function (epId) {
+window.playEpisode = async function (epId, rewindOnResume = false) {
   if (Player.currentId() === epId) {
     Player.togglePause();
     return;
@@ -37,12 +37,14 @@ window.playEpisode = async function (epId) {
       ep = await API.getEpisode(epId);
       if (typeof updateEpisodeRow === "function") updateEpisodeRow(ep);
     }
+    const pos = ep.play_position_seconds || 0;
     Player.play({
       id: ep.id,
       title: ep.title || "Untitled",
       feedTitle: ep.feed_title || window._epState?.feed?.title || "",
       feedId: ep.feed_id,
-      resumeAt: ep.play_position_seconds || 0,
+      resumeAt: rewindOnResume ? Math.max(0, pos - 5) : pos,
+      imageUrl: ep.custom_image_url || ep.episode_image_url || ep.feed_image_url || "",
     });
   } catch (e) { Toast.error(e.message); }
 };
@@ -709,33 +711,48 @@ async function viewFeedDetail(feedId) {
             ${feed.hidden_count > 0 ? `<span class="badge badge-default" id="hidden-count-badge" style="opacity:0.6">${feed.hidden_count} hidden</span>` : ""}
           </div>
           <div style="display:flex;gap:8px;align-items:center" onclick="event.stopPropagation()">
-            ${feed.hidden_count > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-show-hidden">
-              Show Hidden
-            </button>` : ""}
-            ${feed.episode_count > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-mark-all-played">Mark all played</button>` : ""}
-            <span id="dl-btn-area">${_buildDlBtnHtml(feed, initialQueueCount)}</span>
+            ${feed.hidden_count > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-show-hidden">Show Hidden</button>` : ""}
             <svg class="panel-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"/>
             </svg>
           </div>
         </div>
         <div class="panel-body" style="padding:0">
-          <div id="select-bar">
-            <div class="bulk-row-top">
-              <button class="btn btn-ghost btn-sm" id="btn-bulk-select">Select Episodes</button>
-              <div id="bulk-action-bar" class="hidden">
-                <span id="bulk-count">0 selected</span>
-                <button class="btn btn-ghost btn-sm" onclick="_bulkSelectAll()">Select All</button>
-                <button class="btn btn-ghost btn-sm" onclick="_bulkSelectNone()">Select None</button>
-                <button class="btn btn-ghost btn-sm" onclick="_bulkSelectInverse()">Select Inverse</button>
+          <!-- Quick actions: Mark all as played + Download (collapse with panel) -->
+          <div id="episodes-quick-actions" onclick="event.stopPropagation()">
+            ${feed.episode_count > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-mark-all-played">Mark all as played</button>` : ""}
+            <span id="dl-btn-area">${_buildDlBtnHtml(feed, initialQueueCount)}</span>
+          </div>
+          <!-- Select bar -->
+          <div id="select-bar" onclick="event.stopPropagation()">
+            <button class="btn btn-ghost btn-sm" id="btn-bulk-select">Select Episodes</button>
+            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-all" onclick="_bulkSelectAll()">Select All</button>
+            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-none" onclick="_bulkSelectNone()">Select None</button>
+            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-inverse" onclick="_bulkSelectInverse()">Select Inverse</button>
+            <div class="ep-more-wrap hidden" id="bulk-apply-wrap">
+              <button class="btn btn-primary btn-sm" id="bulk-apply-btn"
+                      onclick="const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))">
+                Apply to <span id="bulk-count">0</span> selected
+                ${svg('<polyline points="6 9 12 15 18 9"/>', 'width="12" height="12"')}
+              </button>
+              <div class="ep-more-dropdown" style="left:0;right:auto;min-width:180px">
+                <button id="bulk-btn-download" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkAct('download')">
+                  ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>', 'width="14" height="14"')}
+                  Download
+                </button>
+                <button id="bulk-btn-played" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkActPlayed()">
+                  ${svg('<polyline points="20 6 9 17 4 12"/>', 'width="14" height="14" stroke-width="3.5"')}
+                  <span id="bulk-btn-played-label">Mark Played</span>
+                </button>
+                <button id="bulk-btn-hidden" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkActHidden()">
+                  ${svg('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>', 'width="14" height="14"')}
+                  <span id="bulk-btn-hidden-label">Hide</span>
+                </button>
+                <button id="bulk-btn-delete" style="color:var(--error)" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkAct('delete_file')">
+                  ${svg('<path d="M3 6h18"/><path d="M8 4h8"/><path d="M5 6l1.5 15h11L19 6"/>', 'width="14" height="14"')}
+                  Delete Files
+                </button>
               </div>
-            </div>
-            <div class="bulk-row-actions hidden" id="bulk-act-row">
-              <span class="bulk-actions-label">Apply to selected:</span>
-              <button class="btn btn-ghost btn-sm bulk-act-btn" id="bulk-btn-download" disabled onclick="_bulkAct('download')">Download</button>
-              <button class="btn btn-ghost btn-sm bulk-act-btn" id="bulk-btn-played" disabled onclick="_bulkActPlayed()">Mark Played</button>
-              <button class="btn btn-ghost btn-sm bulk-act-btn" id="bulk-btn-hidden" disabled onclick="_bulkActHidden()">Hide</button>
-              <button class="btn btn-danger btn-sm bulk-act-btn" id="bulk-btn-delete" disabled onclick="_bulkAct('delete_file')">Delete Files</button>
             </div>
           </div>
           <div style="border-bottom:1px solid var(--border);padding-top:10px">
@@ -886,11 +903,11 @@ async function viewFeedDetail(feedId) {
       // _refreshFeedStats updates window._epState.feed with fresh counts; rebuild buttons now
       _rebuildDlArea(0);
       btn.disabled = false;
-      btn.textContent = "Mark all played";
+      btn.textContent = "Mark all as played";
     } catch (e) {
       Toast.error(e.message);
       btn.disabled = false;
-      btn.textContent = "Mark all played";
+      btn.textContent = "Mark all as played";
     }
   });
 
@@ -1206,34 +1223,31 @@ async function viewFeedDetail(feedId) {
     const ids = [..._bulkIds];
     const hasSelection = ids.length > 0;
 
-    // Enable/disable action buttons based on whether anything is selected
-    for (const btn of document.querySelectorAll(".bulk-act-btn")) {
-      btn.disabled = !hasSelection;
-    }
+    // Show/hide "Apply to N selected" button
+    const applyWrap = document.getElementById("bulk-apply-wrap");
+    if (applyWrap) applyWrap.classList.toggle("hidden", !hasSelection);
+
+    // Update count in button label
+    const countEl = document.getElementById("bulk-count");
+    if (countEl) countEl.textContent = ids.length;
 
     if (!hasSelection) return;
 
-    // Played smart button: "Mark Unplayed" only if ALL selected are already played
-    const playedBtn = document.getElementById("bulk-btn-played");
-    if (playedBtn) {
-      const allPlayed = ids.every((id) => document.getElementById(`ep-${id}`)?.dataset.played === "1");
-      playedBtn.textContent = allPlayed ? "Mark Unplayed" : "Mark Played";
-    }
+    // Played smart label: "Mark Unplayed" only if ALL selected are already played
+    const allPlayed = ids.every((id) => document.getElementById(`ep-${id}`)?.dataset.played === "1");
+    const playedLabel = document.getElementById("bulk-btn-played-label");
+    if (playedLabel) playedLabel.textContent = allPlayed ? "Mark Unplayed" : "Mark Played";
 
-    // Hidden smart button: "Unhide" only if ALL selected are already hidden
-    const hiddenBtn = document.getElementById("bulk-btn-hidden");
-    if (hiddenBtn) {
-      const allHidden = ids.every((id) => document.getElementById(`ep-${id}`)?.dataset.hidden === "1");
-      hiddenBtn.textContent = allHidden ? "Unhide" : "Hide";
-    }
+    // Hidden smart label: "Unhide" only if ALL selected are already hidden
+    const allHidden = ids.every((id) => document.getElementById(`ep-${id}`)?.dataset.hidden === "1");
+    const hiddenLabel = document.getElementById("bulk-btn-hidden-label");
+    if (hiddenLabel) hiddenLabel.textContent = allHidden ? "Unhide" : "Hide";
   }
 
   function _syncCheckboxes() {
     for (const cb of document.querySelectorAll(".ep-checkbox")) {
       cb.checked = _bulkIds.has(Number(cb.dataset.epId));
     }
-    const countEl = document.getElementById("bulk-count");
-    if (countEl) countEl.textContent = `${_bulkIds.size} selected`;
     _updateBulkButtons();
   }
 
@@ -1242,8 +1256,6 @@ async function viewFeedDetail(feedId) {
     else _bulkIds.add(epId);
     const cb = document.querySelector(`.ep-checkbox[data-ep-id="${epId}"]`);
     if (cb) cb.checked = _bulkIds.has(epId);
-    const countEl = document.getElementById("bulk-count");
-    if (countEl) countEl.textContent = `${_bulkIds.size} selected`;
     _updateBulkButtons();
   };
 
@@ -1275,8 +1287,11 @@ async function viewFeedDetail(feedId) {
   window._bulkCancel = () => {
     _bulkIds = new Set();
     _syncCheckboxes();
-    document.getElementById("bulk-action-bar")?.classList.add("hidden");
-    document.getElementById("bulk-act-row")?.classList.add("hidden");
+    document.getElementById("bulk-select-all")?.classList.add("hidden");
+    document.getElementById("bulk-select-none")?.classList.add("hidden");
+    document.getElementById("bulk-select-inverse")?.classList.add("hidden");
+    document.getElementById("bulk-apply-wrap")?.classList.add("hidden");
+    document.getElementById("bulk-apply-wrap")?.removeAttribute("data-open");
     document.getElementById("episode-list")?.classList.remove("bulk-mode");
     const btn = document.getElementById("btn-bulk-select");
     if (btn) { btn.textContent = "Select Episodes"; btn.classList.remove("btn-cancel-select"); }
@@ -1315,11 +1330,12 @@ async function viewFeedDetail(feedId) {
 
   document.getElementById("btn-bulk-select")?.addEventListener("click", () => {
     const active = document.getElementById("episode-list")?.classList.toggle("bulk-mode");
-    document.getElementById("bulk-action-bar")?.classList.toggle("hidden", !active);
-    document.getElementById("bulk-act-row")?.classList.toggle("hidden", !active);
+    document.getElementById("bulk-select-all")?.classList.toggle("hidden", !active);
+    document.getElementById("bulk-select-none")?.classList.toggle("hidden", !active);
+    document.getElementById("bulk-select-inverse")?.classList.toggle("hidden", !active);
     const btn = document.getElementById("btn-bulk-select");
     if (btn) {
-      btn.textContent = active ? "Cancel Select Episodes" : "Select Episodes";
+      btn.textContent = active ? "Cancel" : "Select Episodes";
       btn.classList.toggle("btn-cancel-select", !!active);
     }
     if (!active) window._bulkCancel();
