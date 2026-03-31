@@ -247,14 +247,60 @@ async function viewFeeds() {
   });
 
   document.getElementById("opml-file-input")?.addEventListener("change", async (e) => {
+    if (window._opmlImporting) return;
     const file = e.target.files?.[0];
     if (!file) return;
     e.target.value = "";
+
+    // Show waiting state immediately — capture DOM refs synchronously before the await
+    Modal.open("Importing OPML", `
+      <div class="opml-prog-status" id="opml-prog-status">Importing feeds…</div>
+      <div class="opml-prog-log" id="opml-prog-log"></div>
+      <div class="modal-actions" id="opml-prog-actions" style="display:none">
+        <button class="btn btn-primary" onclick="Modal.close()">Done</button>
+      </div>
+    `);
+    const log      = document.getElementById("opml-prog-log");
+    const statusEl = document.getElementById("opml-prog-status");
+    const actions  = document.getElementById("opml-prog-actions");
+    window._opmlImporting = true;
+
+    let r;
     try {
-      const r = await API.importOpml(file);
-      Toast.success(`Imported ${r.added} feed${r.added !== 1 ? "s" : ""}${r.skipped > 0 ? `, ${r.skipped} already present` : ""}${r.failed > 0 ? `, ${r.failed} failed` : ""}`);
-      if (r.added > 0) await _refreshFeedsGrid();
-    } catch (err) { Toast.error(err.message); }
+      r = await API.importOpml(file);
+    } catch (err) {
+      window._opmlImporting = false;
+      Modal.close();
+      Toast.error(err.message);
+      return;
+    }
+
+    // Render per-feed result list
+    if (log && r.results?.length) {
+      for (const item of r.results) {
+        const row = document.createElement("div");
+        const [icon, cls, note] =
+          item.status === "added"   ? ["✓", "opml-entry-ok",   ""]
+        : item.status === "skipped" ? ["–", "opml-entry-skip", "already in library"]
+        :                             ["✗", "opml-entry-fail",  item.error || "failed"];
+        row.className = `opml-entry ${cls}`;
+        row.innerHTML = `<span class="opml-entry-icon">${icon}</span>`
+          + `<span class="opml-entry-label">${escHTML(item.title)}</span>`
+          + (note ? `<span class="opml-entry-note">${escHTML(note)}</span>` : "");
+        log.appendChild(row);
+      }
+    }
+
+    const parts = [];
+    if (r.added)   parts.push(`${r.added} added`);
+    if (r.skipped) parts.push(`${r.skipped} already in library`);
+    if (r.failed)  parts.push(`${r.failed} failed`);
+    if (statusEl) statusEl.textContent = parts.length ? `Done — ${parts.join(", ")}` : "Nothing to import";
+    if (actions)  actions.style.display = "";
+
+    window._opmlImporting = false;
+
+    if (r.added > 0) await _refreshFeedsGrid();
   });
   // Feed card quick actions (sync / delete) via event delegation
   document.getElementById("feeds-grid")?.addEventListener("click", async (e) => {

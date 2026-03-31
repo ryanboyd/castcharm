@@ -2459,3 +2459,61 @@ mark.xml-diff-add {
   flex: 1;
   justify-content: center;
 }
+/* Stack cards vertically on mobile */
+@media (max-width: 600px) {
+  .xml-rev-cards {
+    grid-template-columns: 1fr;
+  }
+  .xml-rev-bulk-row {
+    flex-direction: column;
+  }
+  .xml-rev-bulk-row .btn {
+    width: 100%;
+  }
+}
+/* OPML import progress modal */
+.opml-prog-status {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-1);
+  margin-bottom: 10px;
+}
+.opml-prog-log {
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px;
+  margin-bottom: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.opml-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.opml-entry-icon {
+  font-size: 12px;
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+}
+.opml-entry-label {
+  flex: 1;
+  color: var(--text-1);
+  word-break: break-word;
+}
+.opml-entry-note {
+  font-size: 11px;
+  color: var(--text-3);
+  flex-shrink: 0;
+}
+.opml-entry-ok   .opml-entry-icon  { color: var(--success); }
+.opml-entry-skip .opml-entry-icon  { color: var(--text-3); }
+.opml-entry-skip .opml-entry-label { color: var(--text-2); }
+.opml-entry-fail .opml-entry-icon  { color: var(--error); }
+.opml-entry-fail .opml-entry-label { color: var(--error); }

@@ -1456,8 +1456,16 @@ async def import_opml(
         log.warning("Invalid OPML/XML upload: %s", exc)
         raise HTTPException(status_code=400, detail="Invalid OPML/XML file")
 
-    outlines = root.findall(".//{*}outline") + root.findall(".//outline")
+    # {*} matches any namespace including none, so concatenating both patterns
+    # would double-count standard (no-namespace) outlines — deduplicate by identity.
+    _seen: set[int] = set()
+    outlines = []
+    for el in root.findall(".//{*}outline") + root.findall(".//outline"):
+        if id(el) not in _seen:
+            _seen.add(id(el))
+            outlines.append(el)
     added = skipped = failed = 0
+    results: list[dict] = []
     for outline in outlines:
         xml_url = outline.get("xmlUrl") or outline.get("xmlurl")
         if not xml_url:
@@ -1465,30 +1473,24 @@ async def import_opml(
         xml_url = xml_url.strip()
         if not xml_url:
             continue
+        opml_title = (outline.get("text") or outline.get("title") or "").strip() or None
         existing = db.query(Feed).filter(Feed.url == xml_url).first()
         if existing:
             skipped += 1
+            results.append({"status": "skipped", "title": existing.title or opml_title or xml_url})
             continue
         try:
             resolved = resolve_feed_url(xml_url)
             # Check again with resolved URL
-            if db.query(Feed).filter(Feed.url == resolved).first():
+            existing2 = db.query(Feed).filter(Feed.url == resolved).first()
+            if existing2:
                 skipped += 1
+                results.append({"status": "skipped", "title": existing2.title or opml_title or resolved})
                 continue
-            feed = Feed(url=resolved)
+            # Add feed without blocking on metadata fetch — the background sync will
+            # populate title, description, image, and episodes.
+            feed = Feed(url=resolved, title=opml_title)
             db.add(feed)
-            db.flush()
-            try:
-                metadata = fetch_feed_metadata(resolved)
-                feed.title = metadata.get("title")
-                feed.description = metadata.get("description")
-                feed.image_url = metadata.get("image_url")
-                feed.website_url = metadata.get("website_url")
-                feed.author = metadata.get("author")
-                feed.language = metadata.get("language")
-                feed.category = metadata.get("category")
-            except Exception as e:
-                feed.last_error = str(e)
             db.commit()
             db.refresh(feed)
             from app.scheduler import schedule_feed
@@ -1497,11 +1499,13 @@ async def import_opml(
             mark_sync_queued(feed.id)
             background_tasks.add_task(_bg_sync, feed.id)
             added += 1
-        except Exception:
+            results.append({"status": "added", "title": opml_title or resolved})
+        except Exception as e:
             db.rollback()
             failed += 1
+            results.append({"status": "failed", "title": opml_title or xml_url, "error": str(e)})
     log.info("OPML import complete: %d added, %d skipped, %d failed", added, skipped, failed)
-    return {"added": added, "skipped": skipped, "failed": failed}
+    return {"added": added, "skipped": skipped, "failed": failed, "results": results}
 
 
 @router.delete("/{feed_id}/supplementary/{sub_id}", status_code=204)

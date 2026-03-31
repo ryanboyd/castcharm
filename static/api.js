@@ -45,6 +45,7 @@ const API = {
       try { const j = await res.json(); detail = j.detail; } catch (_) {}
       msg = typeof detail === "string" ? detail : (detail?.message || msg);
       const err = new Error(msg);
+      err.status = res.status;
       if (detail && typeof detail === "object") Object.assign(err, detail);
       throw err;
     }

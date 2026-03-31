@@ -45,6 +45,7 @@ const Modal = {
 };
 
 document.getElementById("modal-overlay").addEventListener("click", (e) => {
+  if (window._opmlImporting) return;
   if (e.target === document.getElementById("modal-overlay")) Modal.close();
 });
 

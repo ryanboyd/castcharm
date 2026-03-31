@@ -2179,8 +2179,8 @@ function _xmlShowCollisionModal(feedId, preview, _resultEl, _uploadBtn) {
         <button class="btn btn-ghost btn-sm" id="xml-keep-both-btn">Keep Both — imported copy tagged [import-dupe]</button>
       </div>
       <div class="xml-rev-bulk-row">
-        <button class="btn btn-ghost btn-sm" id="xml-omit-all-btn">Omit All Remaining</button>
-        <button class="btn btn-ghost btn-sm" id="xml-keep-all-btn">Keep All Remaining</button>
+        <button class="btn btn-ghost btn-sm" id="xml-omit-all-btn">Skip all overlapping entries (keep app versions only)</button>
+        <button class="btn btn-ghost btn-sm" id="xml-keep-all-btn">Import all overlapping entries as duplicates</button>
       </div>`;
 
     const exCard  = document.getElementById("xml-card-ex");
