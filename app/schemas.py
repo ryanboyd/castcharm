@@ -108,6 +108,7 @@ class ManualFeedCreate(BaseModel):
 
 
 class FeedUpdate(BaseModel):
+    title: Optional[str] = None
     url: Optional[str] = None
     active: Optional[bool] = None
     download_path: Optional[str] = None

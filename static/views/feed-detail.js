@@ -460,6 +460,12 @@ async function viewFeedDetail(feedId) {
         <div class="panel-body">
           <form id="feed-settings-form">
             <div class="form-group">
+              <label class="form-label">Feed Title</label>
+              <input class="form-control" name="title" type="text"
+                     value="${escHTML(feed.title || "")}" placeholder="${escHTML(feed.url)}" />
+              <div class="form-hint">Change the display name for this podcast.</div>
+            </div>
+            <div class="form-group">
               <label class="form-label">Feed URL</label>
               <input class="form-control" name="url" type="url"
                      value="${feed.url}" />
@@ -1351,9 +1357,16 @@ async function viewFeedDetail(feedId) {
       }
     }
 
+    // Validate title: can't be empty or whitespace
+    if (!(raw.title?.trim())) {
+      Toast.error("Cannot rename feed to invalid name.");
+      return;
+    }
+
     const payload = {
       url: raw.url || feed.url,
       active: feed.active,
+      title: raw.title?.trim() || feed.title,
       id3_enabled: raw.id3_enabled ?? false,
       id3_field_mapping: mapping,
       filename_date_prefix: raw.filename_date_prefix ?? false,
@@ -1387,8 +1400,13 @@ async function viewFeedDetail(feedId) {
     }
 
     try {
-      await API.updateFeed(id, payload);
+      const updated = await API.updateFeed(id, payload);
       Toast.success("Feed settings saved");
+      // Reflect title change in the page header immediately
+      if (payload.title) {
+        const hdr = document.querySelector(".feed-header-title");
+        if (hdr) hdr.textContent = updated.title || updated.url;
+      }
     } catch (err) {
       Toast.error(err.message);
     }

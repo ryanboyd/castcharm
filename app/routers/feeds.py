@@ -309,6 +309,20 @@ def update_feed(feed_id: int, body: FeedUpdate, db: Session = Depends(get_db)):
     updates = body.model_dump(exclude_unset=True)
     if "url" in updates and updates["url"]:
         updates["url"] = resolve_feed_url(updates["url"])
+
+    # Handle title rename: pin podcast_group to preserve folder path
+    title_changed = False
+    if "title" in updates:
+        new_title = (updates["title"] or "").strip() or None
+        if new_title != feed.title:
+            old_title = feed.title
+            if not feed.podcast_group and old_title:
+                feed.podcast_group = old_title
+            updates["title"] = new_title
+            title_changed = True
+        else:
+            del updates["title"]  # no actual change
+
     for field, value in updates.items():
         setattr(feed, field, value)
 
@@ -337,6 +351,16 @@ def update_feed(feed_id: int, body: FeedUpdate, db: Session = Depends(get_db)):
         write_folder_metadata(feed, folder)
     except Exception:
         pass
+
+    # Regenerate RSS XML if title changed (so the feed XML reflects the new name)
+    if title_changed:
+        try:
+            from app.downloader import get_podcast_folder
+            from app.rss_generator import write_feed_xml
+            folder = get_podcast_folder(feed, db)
+            write_feed_xml(feed, db, folder)
+        except Exception:
+            pass
 
     return _feed_out(feed, db)
 
