@@ -37,6 +37,7 @@ function _stopDLPoll() {
     _downloadedPollInterval = null;
   }
   _dlPollHadItems = false;
+  window._dlPollZeroCount = 0;
   window._dlActiveTab = null;
 }
 
@@ -174,6 +175,7 @@ async function viewDownloads() {
   window._doGlobalUnplayed = async () => {
     try {
       const r = await API.downloadUnplayed();
+      if (window._dlRecentlyCancelled) { window._dlRecentlyCancelled.clear(); window._dlRecentlyCancelledStableAt = null; }
       Toast.info(`Queued ${r.queued} unplayed episode${r.queued !== 1 ? "s" : ""} for download`);
       updateStatus();
       await _refreshAvailableTab();
@@ -182,6 +184,7 @@ async function viewDownloads() {
   window._doGlobalAll = async () => {
     try {
       const r = await API.downloadAll();
+      if (window._dlRecentlyCancelled) { window._dlRecentlyCancelled.clear(); window._dlRecentlyCancelledStableAt = null; }
       Toast.info(`Queued ${r.queued} episode${r.queued !== 1 ? "s" : ""} for download`);
       updateStatus();
       await _refreshAvailableTab();
@@ -463,18 +466,10 @@ async function _refreshAvailableTab() {
         : "Available";
     }
 
-    // Re-render tab content only if user is on the Available tab
+    // Silently update tab content if user is on the Available tab
     if (!window._dlActiveTab || window._dlActiveTab === "available") {
       const tc = document.getElementById("dl-tab-content");
-      if (!tc) return;
-      tc.style.transition = "opacity 0.15s ease";
-      tc.style.opacity = "0";
-      await new Promise((r) => setTimeout(r, 160));
-      tc.innerHTML = renderAvailableFeeds(available);
-      void tc.offsetHeight;
-      tc.style.transition = "opacity 0.2s ease";
-      tc.style.opacity = "1";
-      setTimeout(() => { tc.style.transition = ""; tc.style.opacity = ""; }, 220);
+      if (tc) tc.innerHTML = renderAvailableFeeds(available);
     }
   } catch (_) {}
 }
@@ -484,22 +479,34 @@ window.switchDLTab = function (tabId, btn) {
   for (const b of document.querySelectorAll(".tab-btn")) b.classList.remove("active");
   btn.classList.add("active");
   window._dlActiveTab = tabId;
-  const { inProgress, downloaded, failed } = window._dlData;
   const tabContent = document.getElementById("dl-tab-content");
 
   if (tabId === "available") {
+    // Render from cache immediately so the tab appears without delay, then
+    // silently update in the background to pick up any state changes
     tabContent.innerHTML = renderAvailableFeeds(window._dlData.available);
+    _refreshAvailableTab();
   } else if (tabId === "inprogress") {
+    const { inProgress } = window._dlData;
     const s = window._dlData.status;
     tabContent.innerHTML = _renderInProgressTab(inProgress, (s?.active_downloads ?? 0) + (s?.download_queue_size ?? 0));
     _wireInProgressActions();
     _startDLPoll();
   } else if (tabId === "downloaded") {
-    tabContent.innerHTML = _renderDownloadedTab(downloaded);
+    tabContent.innerHTML = _renderDownloadedTab(window._dlData.downloaded);
     _startDownloadedPoll();
   } else if (tabId === "failed") {
-    tabContent.innerHTML = _renderFailedTab(failed);
-    _wireFailedActions();
+    // Re-fetch failed list on switch so dismissals/retries elsewhere are reflected
+    API.getEpisodes({ status: "failed", limit: 100 }).then((failed) => {
+      if (window._dlActiveTab !== "failed") return;
+      if (window._dlData) window._dlData.failed = failed;
+      _setTabBadge("badge-failed", failed.length, "badge-error");
+      tabContent.innerHTML = _renderFailedTab(failed);
+      _wireFailedActions();
+    }).catch(() => {
+      tabContent.innerHTML = _renderFailedTab(window._dlData.failed || []);
+      _wireFailedActions();
+    });
   }
 
   _fadeInTabContent(tabContent);
@@ -508,11 +515,27 @@ window.switchDLTab = function (tabId, btn) {
 function _wireInProgressActions() {
   document.getElementById("btn-cancel-all-tab")?.addEventListener("click", async () => {
     try {
-      const r = await API.cancelAll();
-      Toast.info(`Cancelled ${r.cancelled} download${r.cancelled !== 1 ? "s" : ""}`);
-      _stopDLPoll();
+      // Optimistically clear badges and UI before the API call so they update instantly
+      if (!window._dlRecentlyCancelled) window._dlRecentlyCancelled = new Set();
+      for (const ep of window._dlData?.inProgress || []) {
+        window._dlRecentlyCancelled.add(ep.id);
+      }
+      if (window._dlData) {
+        if (window._dlData.status) { window._dlData.status.active_downloads = 0; window._dlData.status.download_queue_size = 0; }
+        window._dlData.inProgress = [];
+      }
+      _setTabBadge("badge-inprogress", 0);
+      _setNavBadge(0);
+      const sub = document.getElementById("dl-subtitle");
+      if (sub) {
+        const totalAvail = (window._dlData?.available || []).reduce((s, f) => s + f.available_count, 0);
+        sub.textContent = `${totalAvail} available · 0 in progress`;
+      }
 
-      // Animate all rows out, then show empty state
+      // Remove the "N in progress / Cancel All" bar immediately
+      document.getElementById("btn-cancel-all-tab")?.closest("div")?.remove();
+
+      // Animate rows out immediately
       const list = document.getElementById("dl-episode-list");
       if (list) {
         const rows = [...list.querySelectorAll(".episode-item")];
@@ -526,19 +549,10 @@ function _wireInProgressActions() {
         }
       }
 
-      // Clear badges and subtitle
-      _setTabBadge("badge-inprogress", 0);
-      _setNavBadge(0);
+      _stopDLPoll();
+      const r = await API.cancelAll();
+      Toast.info(`Cancelled ${r.cancelled} download${r.cancelled !== 1 ? "s" : ""}`);
       updateStatus();
-      const sub = document.getElementById("dl-subtitle");
-      if (sub) {
-        const totalAvail = (window._dlData?.available || []).reduce((s, f) => s + f.available_count, 0);
-        sub.textContent = `${totalAvail} available · 0 in progress`;
-      }
-      if (window._dlData) {
-        if (window._dlData.status) { window._dlData.status.active_downloads = 0; window._dlData.status.download_queue_size = 0; }
-        window._dlData.inProgress = [];
-      }
     } catch (e) { Toast.error(e.message); }
   });
 }
@@ -600,7 +614,21 @@ async function _doPollTick() {
       API.getStatus(),
       API.getActiveProgress(),
     ]);
-    const inProgress = [...downloading, ...queued];
+    // Filter out episodes that were recently cancelled; the server may not have processed
+    // them yet, but we want to keep them hidden until the next poll confirms they're gone.
+    const recentlyCancelled = window._dlRecentlyCancelled || new Set();
+    const inProgress = [...downloading, ...queued].filter(e => !recentlyCancelled.has(e.id));
+    // Clear the recently-cancelled set if we haven't seen those episodes in two polls
+    const stillInProgress = new Set([...downloading, ...queued].map(e => e.id));
+    if (window._dlRecentlyCancelled?.size > 0) {
+      const allCleaned = [...window._dlRecentlyCancelled].every(id => !stillInProgress.has(id));
+      if (allCleaned && !window._dlRecentlyCancelledStableAt) {
+        window._dlRecentlyCancelledStableAt = Date.now();
+      } else if (window._dlRecentlyCancelledStableAt && Date.now() - window._dlRecentlyCancelledStableAt > 3000) {
+        window._dlRecentlyCancelled.clear();
+        window._dlRecentlyCancelledStableAt = null;
+      }
+    }
     // Use status API for the true total — fetched episode arrays are capped by limit
     const trueTotal = (status?.active_downloads ?? 0) + (status?.download_queue_size ?? 0);
 
@@ -634,7 +662,12 @@ async function _doPollTick() {
         .catch(() => {});
       return;
     } else {
-      // Tab opened while queue was already empty — just stop polling, don't redirect
+      // Tab opened while queue was already empty — but tolerate one "empty"
+      // response in case downloads were just queued and the server hasn't
+      // processed them yet (race between queueing and the first poll tick).
+      if (!window._dlPollZeroCount) window._dlPollZeroCount = 0;
+      if (++window._dlPollZeroCount < 2) return;
+      window._dlPollZeroCount = 0;
       _stopDLPoll();
       return;
     }
@@ -830,6 +863,7 @@ window.downloadFeedFromDL = async function (feedId, mode, btn) {
     const r = mode === "unplayed"
       ? await API.downloadUnplayedFeed(feedId)
       : await API.downloadAllFeed(feedId);
+    if (window._dlRecentlyCancelled) { window._dlRecentlyCancelled.clear(); window._dlRecentlyCancelledStableAt = null; }
     const label = mode === "unplayed" ? "unplayed episode" : "episode";
     Toast.info(`Queued ${r.queued} ${label}${r.queued !== 1 ? "s" : ""} for download`);
     updateStatus();
@@ -877,6 +911,12 @@ window.queueEpisodeDL = async function (id) {
 window.cancelEpisodeDL = async function (id) {
   try {
     await API.cancelEpisode(id);
+    if (window._dlData) {
+      window._dlData.inProgress = (window._dlData.inProgress || []).filter((e) => e.id !== id);
+    }
+    // Track as recently cancelled to filter from poll responses while server catches up
+    if (!window._dlRecentlyCancelled) window._dlRecentlyCancelled = new Set();
+    window._dlRecentlyCancelled.add(id);
     updateStatus();
     animateRemove(document.getElementById(`dl-ep-${id}`));
   } catch (e) { Toast.error(e.message); }
