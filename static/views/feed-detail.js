@@ -1,8 +1,11 @@
 "use strict";
 
 // Close any open episode "..." dropdown when clicking elsewhere (one-time global)
-document.addEventListener("click", () => {
-  document.querySelectorAll(".ep-more-wrap[data-open]").forEach(el => el.removeAttribute("data-open"));
+document.addEventListener("click", (e) => {
+  const clickedWrap = e.target.closest(".ep-more-wrap");
+  document.querySelectorAll(".ep-more-wrap[data-open]").forEach(el => {
+    if (el !== clickedWrap) el.removeAttribute("data-open");
+  });
 });
 
 // Parse an itunes:duration string to integer seconds (mirrors backend logic)
