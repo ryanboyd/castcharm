@@ -137,22 +137,39 @@ async function viewDashboard() {
           <div class="stat-value">${status.podcasts_total}</div>
           <div class="stat-sub">${status.feeds_total} total feeds</div>
         </div>
-        <div class="stat-card" style="cursor:pointer" data-action="navigate" data-path="/downloads">
-          <div class="stat-label">Downloaded</div>
-          <div class="stat-value">${status.episodes_downloaded}</div>
-          <div class="stat-sub">${status.episodes_total - status.episodes_downloaded} available${status.episodes_failed > 0 ? ` · <span style="color:var(--error)">${status.episodes_failed} failed</span>` : ""}</div>
-        </div>
-        <div class="stat-card" style="cursor:pointer" data-action="navigate" data-path="/downloads" data-dl-tab="inprogress">
-          <div class="stat-label">Queue</div>
-          <div class="stat-value">${status.download_queue_size + status.active_downloads}</div>
-          <div class="stat-sub">${status.active_downloads} active</div>
-        </div>
         <div class="stat-card" style="cursor:pointer" data-action="navigate" data-path="/stats">
           <div class="stat-label">Storage</div>
           <div class="stat-value">${fmtBytes(status.storage_bytes)}</div>
           <div class="stat-sub">used by downloads</div>
         </div>
       </div>
+
+    <div class="card" style="margin-bottom:12px">
+      <div class="card">
+          <div class="card-body">
+            <div class="section-title">Feed Health</div>
+            ${(() => {
+              const errFeeds = feeds.filter((f) => f.last_error).slice(0, 6);
+              if (errFeeds.length === 0) {
+                return `<div style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--success);font-size:13px">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                  All feeds healthy
+                </div>`;
+              }
+              return errFeeds.map((f) => `
+                <div class="activity-item" style="cursor:pointer" data-action="navigate" data-path="/feeds/${f.id}">
+                  <div class="activity-icon" style="color:var(--error)">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <div class="activity-info">
+                    <div class="activity-title truncate" style="color:var(--text)">${f.title || f.url}</div>
+                    <div class="activity-sub truncate" style="color:var(--error);max-width:100%">${escHTML((f.last_error || "").slice(0, 120))}</div>
+                  </div>
+                </div>`).join("");
+            })()}
+          </div>
+        </div>
+    </div>
 
       ${continueEps.length > 0 ? `
       <div class="card" style="margin-bottom:12px">
@@ -253,31 +270,6 @@ async function viewDashboard() {
       })()}
 
       <div class="dash-grid">
-
-        <div class="card">
-          <div class="card-body">
-            <div class="section-title">Feed Health</div>
-            ${(() => {
-              const errFeeds = feeds.filter((f) => f.last_error).slice(0, 6);
-              if (errFeeds.length === 0) {
-                return `<div style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--success);font-size:13px">
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;flex-shrink:0"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                  All feeds healthy
-                </div>`;
-              }
-              return errFeeds.map((f) => `
-                <div class="activity-item" style="cursor:pointer" data-action="navigate" data-path="/feeds/${f.id}">
-                  <div class="activity-icon" style="color:var(--error)">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:22px;height:22px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  </div>
-                  <div class="activity-info">
-                    <div class="activity-title truncate" style="color:var(--text)">${f.title || f.url}</div>
-                    <div class="activity-sub truncate" style="color:var(--error);max-width:100%">${escHTML((f.last_error || "").slice(0, 120))}</div>
-                  </div>
-                </div>`).join("");
-            })()}
-          </div>
-        </div>
 
         <div class="card">
           <div class="card-body">
