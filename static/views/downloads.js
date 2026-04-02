@@ -37,6 +37,7 @@ function _stopDLPoll() {
     _downloadedPollInterval = null;
   }
   _dlPollHadItems = false;
+  window._dlPollZeroCount = 0;
   window._dlActiveTab = null;
 }
 
@@ -152,16 +153,16 @@ async function viewDownloads() {
       </div>
 
       <div class="tabs" id="dl-tabs">
-        <button class="tab-btn active" data-tab="available" onclick="switchDLTab('available', this)">
+        <button class="tab-btn active" data-tab="available" data-action="dl-tab">
           Available${totalAvailable > 0 ? ` <span class="badge badge-primary" style="margin-left:4px">${totalAvailable}</span>` : ""}
         </button>
-        <button class="tab-btn" data-tab="inprogress" onclick="switchDLTab('inprogress', this)">
+        <button class="tab-btn" data-tab="inprogress" data-action="dl-tab">
           In Progress${inProgressTotal > 0 ? ` <span class="badge badge-warning" style="margin-left:4px" id="badge-inprogress">${inProgressTotal}</span>` : '<span id="badge-inprogress"></span>'}
         </button>
-        <button class="tab-btn" data-tab="downloaded" onclick="switchDLTab('downloaded', this)">
+        <button class="tab-btn" data-tab="downloaded" data-action="dl-tab">
           Downloaded
         </button>
-        <button class="tab-btn" data-tab="failed" onclick="switchDLTab('failed', this)">
+        <button class="tab-btn" data-tab="failed" data-action="dl-tab">
           Failed${failed.length > 0 ? ` <span class="badge badge-error" style="margin-left:4px" id="badge-failed">${failed.length}</span>` : '<span id="badge-failed"></span>'}
         </button>
       </div>
@@ -174,6 +175,7 @@ async function viewDownloads() {
   window._doGlobalUnplayed = async () => {
     try {
       const r = await API.downloadUnplayed();
+      if (window._dlRecentlyCancelled) { window._dlRecentlyCancelled.clear(); window._dlRecentlyCancelledStableAt = null; }
       Toast.info(`Queued ${r.queued} unplayed episode${r.queued !== 1 ? "s" : ""} for download`);
       updateStatus();
       await _refreshAvailableTab();
@@ -182,6 +184,7 @@ async function viewDownloads() {
   window._doGlobalAll = async () => {
     try {
       const r = await API.downloadAll();
+      if (window._dlRecentlyCancelled) { window._dlRecentlyCancelled.clear(); window._dlRecentlyCancelledStableAt = null; }
       Toast.info(`Queued ${r.queued} episode${r.queued !== 1 ? "s" : ""} for download`);
       updateStatus();
       await _refreshAvailableTab();
@@ -208,18 +211,18 @@ function renderAvailableFeeds(feeds) {
   let globalBtns = "";
   if (totalAvail > 0) {
     if (totalUnplayed > 0) {
-      globalBtns = `<div class="ep-more-wrap" onclick="event.stopPropagation()">
-        <button class="btn btn-primary btn-split-main" onclick="_doGlobalUnplayed()">
+      globalBtns = `<div class="ep-more-wrap" data-action="stop-prop">
+        <button class="btn btn-primary btn-split-main" data-action="dl-global-unplayed">
           ${dlIcon} Download All Unplayed (${totalUnplayed})
         </button>
-        <button class="btn btn-primary btn-split-caret" onclick="${caretToggle}">${caret}</button>
+        <button class="btn btn-primary btn-split-caret" data-action="toggle-more-wrap">${caret}</button>
         <div class="ep-more-dropdown" style="right:0;left:auto;min-width:220px">
-          <button onclick="this.closest('.ep-more-wrap').removeAttribute('data-open');_doGlobalUnplayed()">Download All Unplayed (${totalUnplayed})</button>
-          <button onclick="this.closest('.ep-more-wrap').removeAttribute('data-open');_doGlobalAll()">Download All (${totalAvail})</button>
+          <button data-action="dl-global-unplayed">Download All Unplayed (${totalUnplayed})</button>
+          <button data-action="dl-global-all">Download All (${totalAvail})</button>
         </div>
       </div>`;
     } else {
-      globalBtns = `<button class="btn btn-primary" onclick="_doGlobalAll()">
+      globalBtns = `<button class="btn btn-primary" data-action="dl-global-all">
         ${dlIcon} Download All (${totalAvail})
       </button>`;
     }
@@ -237,12 +240,12 @@ function renderAvailableFeeds(feeds) {
 
   return `<div class="card">${actionBar}<div class="episode-list">${feeds.map((f) => `
     <div class="episode-item">
-      <div class="episode-art" style="cursor:pointer" onclick="Router.navigate('/feeds/${f.id}')">
+      <div class="episode-art" style="cursor:pointer" data-action="navigate" data-path="/feeds/${f.id}">
         ${f.image_url
-          ? `<img src="${f.image_url}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
+          ? `<img src="${f.image_url}" alt="" loading="lazy" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
           : `<div class="episode-art-placeholder">${_PODCAST_SVG}</div>`}
       </div>
-      <div class="episode-info" style="cursor:pointer" onclick="Router.navigate('/feeds/${f.id}')">
+      <div class="episode-info" style="cursor:pointer" data-action="navigate" data-path="/feeds/${f.id}">
         <div class="episode-title">${f.title || f.url}</div>
         <div class="episode-meta">
           ${f.downloaded_count > 0 ? `<span>${f.downloaded_count} downloaded</span>` : ""}
@@ -253,21 +256,20 @@ function renderAvailableFeeds(feeds) {
         ${(() => {
           const dlIcon = svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
           const caret = svg('<polyline points="6 9 12 15 18 9"/>');
-          const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
           const unplayed = f.unplayed_available_count || 0;
           if (unplayed > 0) {
-            return `<div class="ep-more-wrap" onclick="event.stopPropagation()">
-              <button class="btn btn-primary btn-sm btn-split-main" onclick="downloadFeedFromDL(${f.id},'unplayed',this)">
+            return `<div class="ep-more-wrap" data-action="stop-prop">
+              <button class="btn btn-primary btn-sm btn-split-main" data-action="dl-feed" data-feed-id="${f.id}" data-mode="unplayed">
                 ${dlIcon} Unplayed (${unplayed})
               </button>
-              <button class="btn btn-primary btn-sm btn-split-caret" onclick="${caretToggle}">${caret}</button>
+              <button class="btn btn-primary btn-sm btn-split-caret" data-action="toggle-more-wrap">${caret}</button>
               <div class="ep-more-dropdown" style="right:0;left:auto;min-width:180px">
-                <button onclick="this.closest('.ep-more-wrap').removeAttribute('data-open');downloadFeedFromDL(${f.id},'unplayed',this)">Download Unplayed (${unplayed})</button>
-                <button onclick="this.closest('.ep-more-wrap').removeAttribute('data-open');downloadFeedFromDL(${f.id},'all',this)">Download All (${f.available_count})</button>
+                <button data-action="dl-feed" data-feed-id="${f.id}" data-mode="unplayed">Download Unplayed (${unplayed})</button>
+                <button data-action="dl-feed" data-feed-id="${f.id}" data-mode="all">Download All (${f.available_count})</button>
               </div>
             </div>`;
           } else {
-            return `<button class="btn btn-primary btn-sm" onclick="downloadFeedFromDL(${f.id},'all',this)">
+            return `<button class="btn btn-primary btn-sm" data-action="dl-feed" data-feed-id="${f.id}" data-mode="all">
               ${dlIcon} Download All (${f.available_count})
             </button>`;
           }
@@ -280,7 +282,7 @@ function _showMoreFooter(tabId, currentCount, offset) {
   // Show "Show More" if we got a full page (might be more)
   if (currentCount < 100) return "";
   return `<div id="dl-show-more-bar" style="padding:12px 14px;text-align:center;border-top:1px solid var(--border)">
-    <button class="btn btn-ghost btn-sm" onclick="_dlLoadMore('${tabId}', ${offset + currentCount})">
+    <button class="btn btn-ghost btn-sm" data-action="dl-load-more" data-tab="${tabId}" data-offset="${offset + currentCount}">
       Show More
     </button>
   </div>`;
@@ -303,7 +305,7 @@ function _renderDownloadedTab(episodes, offset = 0) {
   const bar = episodes.length > 0
     ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)">
          <span data-shown style="font-size:13px;color:var(--text-2)">${offset + episodes.length} shown</span>
-         <button class="btn btn-ghost btn-sm" onclick="_clearDLList()">
+         <button class="btn btn-ghost btn-sm" data-action="dl-clear-list">
            ${svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>')}
            Clear List
          </button>
@@ -353,7 +355,7 @@ window._dlLoadMore = async function(tabId, offset) {
     list.insertAdjacentHTML("beforeend", episodes.map(renderDLRow).join(""));
     if (episodes.length >= 100) {
       list.closest(".card").insertAdjacentHTML("beforeend", `<div id="dl-show-more-bar" style="padding:12px 14px;text-align:center;border-top:1px solid var(--border)">
-        <button class="btn btn-ghost btn-sm" onclick="_dlLoadMore('${tabId}', ${offset + episodes.length})">
+        <button class="btn btn-ghost btn-sm" data-action="dl-load-more" data-tab="${tabId}" data-offset="${offset + episodes.length}">
           Show More
         </button>
       </div>`);
@@ -464,18 +466,10 @@ async function _refreshAvailableTab() {
         : "Available";
     }
 
-    // Re-render tab content only if user is on the Available tab
+    // Silently update tab content if user is on the Available tab
     if (!window._dlActiveTab || window._dlActiveTab === "available") {
       const tc = document.getElementById("dl-tab-content");
-      if (!tc) return;
-      tc.style.transition = "opacity 0.15s ease";
-      tc.style.opacity = "0";
-      await new Promise((r) => setTimeout(r, 160));
-      tc.innerHTML = renderAvailableFeeds(available);
-      void tc.offsetHeight;
-      tc.style.transition = "opacity 0.2s ease";
-      tc.style.opacity = "1";
-      setTimeout(() => { tc.style.transition = ""; tc.style.opacity = ""; }, 220);
+      if (tc) tc.innerHTML = renderAvailableFeeds(available);
     }
   } catch (_) {}
 }
@@ -485,22 +479,34 @@ window.switchDLTab = function (tabId, btn) {
   for (const b of document.querySelectorAll(".tab-btn")) b.classList.remove("active");
   btn.classList.add("active");
   window._dlActiveTab = tabId;
-  const { inProgress, downloaded, failed } = window._dlData;
   const tabContent = document.getElementById("dl-tab-content");
 
   if (tabId === "available") {
+    // Render from cache immediately so the tab appears without delay, then
+    // silently update in the background to pick up any state changes
     tabContent.innerHTML = renderAvailableFeeds(window._dlData.available);
+    _refreshAvailableTab();
   } else if (tabId === "inprogress") {
+    const { inProgress } = window._dlData;
     const s = window._dlData.status;
     tabContent.innerHTML = _renderInProgressTab(inProgress, (s?.active_downloads ?? 0) + (s?.download_queue_size ?? 0));
     _wireInProgressActions();
     _startDLPoll();
   } else if (tabId === "downloaded") {
-    tabContent.innerHTML = _renderDownloadedTab(downloaded);
+    tabContent.innerHTML = _renderDownloadedTab(window._dlData.downloaded);
     _startDownloadedPoll();
   } else if (tabId === "failed") {
-    tabContent.innerHTML = _renderFailedTab(failed);
-    _wireFailedActions();
+    // Re-fetch failed list on switch so dismissals/retries elsewhere are reflected
+    API.getEpisodes({ status: "failed", limit: 100 }).then((failed) => {
+      if (window._dlActiveTab !== "failed") return;
+      if (window._dlData) window._dlData.failed = failed;
+      _setTabBadge("badge-failed", failed.length, "badge-error");
+      tabContent.innerHTML = _renderFailedTab(failed);
+      _wireFailedActions();
+    }).catch(() => {
+      tabContent.innerHTML = _renderFailedTab(window._dlData.failed || []);
+      _wireFailedActions();
+    });
   }
 
   _fadeInTabContent(tabContent);
@@ -509,11 +515,27 @@ window.switchDLTab = function (tabId, btn) {
 function _wireInProgressActions() {
   document.getElementById("btn-cancel-all-tab")?.addEventListener("click", async () => {
     try {
-      const r = await API.cancelAll();
-      Toast.info(`Cancelled ${r.cancelled} download${r.cancelled !== 1 ? "s" : ""}`);
-      _stopDLPoll();
+      // Optimistically clear badges and UI before the API call so they update instantly
+      if (!window._dlRecentlyCancelled) window._dlRecentlyCancelled = new Set();
+      for (const ep of window._dlData?.inProgress || []) {
+        window._dlRecentlyCancelled.add(ep.id);
+      }
+      if (window._dlData) {
+        if (window._dlData.status) { window._dlData.status.active_downloads = 0; window._dlData.status.download_queue_size = 0; }
+        window._dlData.inProgress = [];
+      }
+      _setTabBadge("badge-inprogress", 0);
+      _setNavBadge(0);
+      const sub = document.getElementById("dl-subtitle");
+      if (sub) {
+        const totalAvail = (window._dlData?.available || []).reduce((s, f) => s + f.available_count, 0);
+        sub.textContent = `${totalAvail} available · 0 in progress`;
+      }
 
-      // Animate all rows out, then show empty state
+      // Remove the "N in progress / Cancel All" bar immediately
+      document.getElementById("btn-cancel-all-tab")?.closest("div")?.remove();
+
+      // Animate rows out immediately
       const list = document.getElementById("dl-episode-list");
       if (list) {
         const rows = [...list.querySelectorAll(".episode-item")];
@@ -527,19 +549,10 @@ function _wireInProgressActions() {
         }
       }
 
-      // Clear badges and subtitle
-      _setTabBadge("badge-inprogress", 0);
-      _setNavBadge(0);
+      _stopDLPoll();
+      const r = await API.cancelAll();
+      Toast.info(`Cancelled ${r.cancelled} download${r.cancelled !== 1 ? "s" : ""}`);
       updateStatus();
-      const sub = document.getElementById("dl-subtitle");
-      if (sub) {
-        const totalAvail = (window._dlData?.available || []).reduce((s, f) => s + f.available_count, 0);
-        sub.textContent = `${totalAvail} available · 0 in progress`;
-      }
-      if (window._dlData) {
-        if (window._dlData.status) { window._dlData.status.active_downloads = 0; window._dlData.status.download_queue_size = 0; }
-        window._dlData.inProgress = [];
-      }
     } catch (e) { Toast.error(e.message); }
   });
 }
@@ -601,7 +614,21 @@ async function _doPollTick() {
       API.getStatus(),
       API.getActiveProgress(),
     ]);
-    const inProgress = [...downloading, ...queued];
+    // Filter out episodes that were recently cancelled; the server may not have processed
+    // them yet, but we want to keep them hidden until the next poll confirms they're gone.
+    const recentlyCancelled = window._dlRecentlyCancelled || new Set();
+    const inProgress = [...downloading, ...queued].filter(e => !recentlyCancelled.has(e.id));
+    // Clear the recently-cancelled set if we haven't seen those episodes in two polls
+    const stillInProgress = new Set([...downloading, ...queued].map(e => e.id));
+    if (window._dlRecentlyCancelled?.size > 0) {
+      const allCleaned = [...window._dlRecentlyCancelled].every(id => !stillInProgress.has(id));
+      if (allCleaned && !window._dlRecentlyCancelledStableAt) {
+        window._dlRecentlyCancelledStableAt = Date.now();
+      } else if (window._dlRecentlyCancelledStableAt && Date.now() - window._dlRecentlyCancelledStableAt > 3000) {
+        window._dlRecentlyCancelled.clear();
+        window._dlRecentlyCancelledStableAt = null;
+      }
+    }
     // Use status API for the true total — fetched episode arrays are capped by limit
     const trueTotal = (status?.active_downloads ?? 0) + (status?.download_queue_size ?? 0);
 
@@ -635,7 +662,12 @@ async function _doPollTick() {
         .catch(() => {});
       return;
     } else {
-      // Tab opened while queue was already empty — just stop polling, don't redirect
+      // Tab opened while queue was already empty — but tolerate one "empty"
+      // response in case downloads were just queued and the server hasn't
+      // processed them yet (race between queueing and the first poll tick).
+      if (!window._dlPollZeroCount) window._dlPollZeroCount = 0;
+      if (++window._dlPollZeroCount < 2) return;
+      window._dlPollZeroCount = 0;
       _stopDLPoll();
       return;
     }
@@ -770,25 +802,25 @@ function renderDLRow(ep) {
 
   let actionBtn = "";
   if ((ep.status === "pending" || ep.status === "failed") && ep.enclosure_url) {
-    actionBtn = `<button class="btn btn-ghost btn-sm" onclick="queueEpisodeDL(${ep.id})">
+    actionBtn = `<button class="btn btn-ghost btn-sm" data-action="dl-queue" data-ep-id="${ep.id}">
       ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}
       Download
     </button>`;
   } else if (ep.status === "queued" || ep.status === "downloading") {
-    actionBtn = `<button class="btn btn-ghost btn-sm btn-icon" title="Cancel download" onclick="cancelEpisodeDL(${ep.id})">
+    actionBtn = `<button class="btn btn-ghost btn-sm btn-icon" title="Cancel download" data-action="dl-cancel" data-ep-id="${ep.id}">
       ${svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>')}
     </button>`;
   } else if (ep.status === "failed") {
     actionBtn = `<div style="display:flex;gap:4px">
-      ${ep.enclosure_url ? `<button class="btn btn-ghost btn-sm" onclick="queueEpisodeDL(${ep.id})" title="Retry">
+      ${ep.enclosure_url ? `<button class="btn btn-ghost btn-sm" data-action="dl-queue" data-ep-id="${ep.id}" title="Retry">
         ${svg('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>')}
       </button>` : ""}
-      <button class="btn btn-ghost btn-sm btn-icon" onclick="dismissEpisodeDL(${ep.id})" title="Remove">
+      <button class="btn btn-ghost btn-sm btn-icon" data-action="dl-dismiss" data-ep-id="${ep.id}" title="Remove">
         ${svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>')}
       </button>
     </div>`;
   } else if (ep.status === "downloaded") {
-    actionBtn = `<button class="btn btn-danger btn-sm" onclick="deleteEpisodeFileDL(${ep.id})">
+    actionBtn = `<button class="btn btn-danger btn-sm" data-action="dl-delete" data-ep-id="${ep.id}">
       ${svg('<polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>')}
       Delete
     </button>`;
@@ -797,7 +829,7 @@ function renderDLRow(ep) {
   return `<div class="episode-item" id="dl-ep-${ep.id}" data-status="${ep.status}">
     <div class="episode-art">
       ${imgSrc
-        ? `<img src="${imgSrc}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
+        ? `<img src="${imgSrc}" alt="" loading="lazy" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
         : `<div class="episode-art-placeholder">${_PODCAST_SVG}</div>`}
     </div>
     <div class="episode-info">
@@ -831,6 +863,7 @@ window.downloadFeedFromDL = async function (feedId, mode, btn) {
     const r = mode === "unplayed"
       ? await API.downloadUnplayedFeed(feedId)
       : await API.downloadAllFeed(feedId);
+    if (window._dlRecentlyCancelled) { window._dlRecentlyCancelled.clear(); window._dlRecentlyCancelledStableAt = null; }
     const label = mode === "unplayed" ? "unplayed episode" : "episode";
     Toast.info(`Queued ${r.queued} ${label}${r.queued !== 1 ? "s" : ""} for download`);
     updateStatus();
@@ -878,6 +911,12 @@ window.queueEpisodeDL = async function (id) {
 window.cancelEpisodeDL = async function (id) {
   try {
     await API.cancelEpisode(id);
+    if (window._dlData) {
+      window._dlData.inProgress = (window._dlData.inProgress || []).filter((e) => e.id !== id);
+    }
+    // Track as recently cancelled to filter from poll responses while server catches up
+    if (!window._dlRecentlyCancelled) window._dlRecentlyCancelled = new Set();
+    window._dlRecentlyCancelled.add(id);
     updateStatus();
     animateRemove(document.getElementById(`dl-ep-${id}`));
   } catch (e) { Toast.error(e.message); }

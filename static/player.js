@@ -157,7 +157,7 @@ const Player = (() => {
   function _setArtwork(container, url) {
     if (!container) return;
     if (url) {
-      container.innerHTML = `<img src="${url}" alt="" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" />
+      container.innerHTML = `<img src="${url}" alt="" />
         <div class="player-art-fallback" style="display:none">${_PODCAST_ICON}</div>`;
     } else {
       container.innerHTML = `<div class="player-art-fallback">${_PODCAST_ICON}</div>`;

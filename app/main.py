@@ -128,14 +128,40 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 
 # ── Security headers middleware ────────────────────────────────────────────────
+# CSP notes:
+#   script-src  — 'unsafe-inline' removed; all event handlers use data-action
+#                 delegation rather than inline onclick/onerror attributes.
+#   style-src   — 'unsafe-inline' needed; JS sets element.style.* throughout.
+#   img-src     — podcast cover art can come from any HTTPS host in the RSS feed;
+#                 blob: is needed for the local file-upload cover-art preview.
+#   media-src   — audio streaming goes through the local server only.
+#   connect-src — all XHR/fetch calls go to self (the local API).
+#   object-src  — block Flash and other legacy plugin content entirely.
+#   base-uri    — prevent a <base> tag injection from hijacking relative URLs.
+#   frame-ancestors — supersedes X-Frame-Options for modern browsers; kept both
+#                     for compatibility with older reverse-proxy stacks.
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' https: data: blob:; "
+    "media-src 'self' blob:; "
+    "connect-src 'self'; "
+    "font-src 'self'; "
+    "object-src 'none'; "
+    "base-uri 'self'; "
+    "form-action 'self'; "
+    "frame-ancestors 'self'"
+)
+
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: StarletteRequest, call_next):
         response = await call_next(request)
-        # Prevent the app from being embedded in iframes (clickjacking)
+        response.headers.setdefault("Content-Security-Policy", _CSP)
+        # Keep X-Frame-Options for reverse proxies / older browsers that don't
+        # honour the frame-ancestors CSP directive yet.
         response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-        # Prevent browsers from MIME-sniffing the response content type
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        # Don't send the Referer header to external sites
         response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
         # Versioned static assets can be cached indefinitely; index.html sets no-cache itself
         if request.url.path.startswith("/static/"):

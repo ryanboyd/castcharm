@@ -132,7 +132,7 @@ function _stepTheme() {
   const buttons = Object.entries(THEMES).map(([id, t]) => {
     const active = _setupState.theme === id;
     return `<button type="button" data-theme-btn="${id}"
-      onclick="_wizardSelectTheme('${id}')"
+      data-action="wiz-select-theme" data-theme="${id}"
       class="theme-pick-btn"
       style="background:${t.bg2};border-color:${active ? t.primary : "transparent"}">
       <div style="width:24px;height:24px;border-radius:50%;background:${t.primary};margin-bottom:5px"></div>
@@ -221,9 +221,9 @@ function _stepStorage() {
         <input class="form-control" id="wiz-dl-path" type="text"
                value="${escHTML(_setupState.downloadPath)}"
                style="font-family:monospace;flex:1"
-               oninput="_setupState.downloadPath=this.value" />
+               data-action="setup-dl-path" />
         <button class="btn btn-ghost" type="button"
-                onclick="_loadDirBrowser(document.getElementById('wiz-dl-path').value)">
+                data-action="wiz-load-dir">
           Go →
         </button>
       </div>
@@ -240,14 +240,12 @@ window._loadDirBrowser = async function(path) {
     const data = await API.browseDirs(path || "/");
     const rows = [];
     if (data.parent !== null) {
-      rows.push(`<div class="dir-entry dir-up"
-        onclick="var p='${escJS(data.parent)}';document.getElementById('wiz-dl-path').value=p;_setupState.downloadPath=p;_loadDirBrowser(p)">
+      rows.push(`<div class="dir-entry dir-up" data-action="wiz-select-dir" data-path="${escHTML(data.parent)}">
         <span class="dir-icon">↑</span><span>..</span>
       </div>`);
     }
     for (const entry of data.entries) {
-      rows.push(`<div class="dir-entry"
-        onclick="var p='${escJS(entry.path)}';document.getElementById('wiz-dl-path').value=p;_setupState.downloadPath=p;_loadDirBrowser(p)">
+      rows.push(`<div class="dir-entry" data-action="wiz-select-dir" data-path="${escHTML(entry.path)}">
         <span class="dir-icon">📁</span><span>${escHTML(entry.name)}</span>
       </div>`);
     }

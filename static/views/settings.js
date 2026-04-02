@@ -25,7 +25,7 @@ async function viewSettings() {
 
         <!-- Appearance -->
         <div class="panel open" id="panel-appearance">
-          <div class="panel-header" onclick="togglePanel('panel-appearance')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-appearance">
             <div class="panel-header-title">
               ${svg('<circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4"/>', 'width="16" height="16"')}
               Appearance
@@ -40,7 +40,7 @@ async function viewSettings() {
               <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">
                 ${Object.entries(THEMES).map(([id, t]) => {
                   const active = (settings.theme || "midnight") === id;
-                  return `<button type="button" data-theme-btn="${id}" onclick="selectTheme('${id}')"
+                  return `<button type="button" data-theme-btn="${id}" data-action="select-theme" data-theme="${id}"
                     style="background:${t.bg2};border:2px solid ${active ? t.primary : "transparent"};border-radius:10px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:6px;min-width:72px;outline:none;transition:border-color 0.15s ease">
                     <div style="width:26px;height:26px;border-radius:50%;background:${t.primary}"></div>
                     <span style="font-size:11px;color:${t.labelColor};font-weight:500;white-space:nowrap">${t.label}</span>
@@ -63,7 +63,7 @@ async function viewSettings() {
 
         <!-- Storage -->
         <div class="panel open" id="panel-storage">
-          <div class="panel-header" onclick="togglePanel('panel-storage')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-storage">
             <div class="panel-header-title">
               ${svg('<path d="M22 12H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>', 'width="16" height="16"')}
               Storage
@@ -100,7 +100,7 @@ async function viewSettings() {
                     <input type="radio" name="autoclean_mode" value="unplayed"
                            ${(settings.autoclean_mode || "unplayed") === "unplayed" ? "checked" : ""}
                            style="margin-top:3px;flex-shrink:0"
-                           onchange="_updateAutocleanModeHints()" />
+                           data-action="autoclean-mode" />
                     <span>
                       <strong style="color:var(--text)">Keep unplayed episodes</strong><br>
                       <span style="font-size:11px;color:var(--text-3)">Deletes any episode you've fully played. Partially listened episodes are never deleted.</span>
@@ -110,7 +110,7 @@ async function viewSettings() {
                     <input type="radio" name="autoclean_mode" value="recent"
                            ${(settings.autoclean_mode || "unplayed") === "recent" ? "checked" : ""}
                            style="margin-top:3px;flex-shrink:0"
-                           onchange="_updateAutocleanModeHints()" />
+                           data-action="autoclean-mode" />
                     <span>
                       <strong style="color:var(--text)">Keep N most recent episodes</strong><br>
                       <span style="font-size:11px;color:var(--text-3)">Deletes the oldest downloads once the per-podcast count exceeds N. Unplayed episodes are never deleted.</span>
@@ -138,7 +138,7 @@ async function viewSettings() {
 
               <div style="margin-left:40px;margin-bottom:12px">
                 <button type="button" class="btn btn-ghost btn-sm" id="btn-run-autoclean-now"
-                        onclick="_runAutocleanNow()">
+                        data-action="autoclean-now">
                   ${svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')}
                   Run cleanup now
                 </button>
@@ -157,7 +157,7 @@ async function viewSettings() {
 
         <!-- File options -->
         <div class="panel open" id="panel-files">
-          <div class="panel-header" onclick="togglePanel('panel-files')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-files">
             <div class="panel-header-title">
               ${svg('<path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/>', 'width="16" height="16"')}
               File Options
@@ -199,7 +199,7 @@ async function viewSettings() {
 
         <!-- Playback -->
         <div class="panel open" id="panel-playback">
-          <div class="panel-header" onclick="togglePanel('panel-playback')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-playback">
             <div class="panel-header-title">
               ${svg('<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>', 'width="16" height="16"')}
               Playback
@@ -221,7 +221,7 @@ async function viewSettings() {
 
         <!-- Scheduling -->
         <div class="panel open" id="panel-schedule">
-          <div class="panel-header" onclick="togglePanel('panel-schedule')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-schedule">
             <div class="panel-header-title">
               ${svg('<circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>', 'width="16" height="16"')}
               Scheduling
@@ -322,7 +322,7 @@ async function viewSettings() {
 
         <!-- Default ID3 mapping -->
         <div class="panel" id="panel-id3">
-          <div class="panel-header" onclick="togglePanel('panel-id3')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-id3">
             <div class="panel-header-title">
               ${svg('<path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>', 'width="16" height="16"')}
               Default ID3 Tag Mapping
@@ -366,7 +366,7 @@ async function viewSettings() {
 
         <!-- Security -->
         <div class="panel" id="panel-security">
-          <div class="panel-header" onclick="togglePanel('panel-security')">
+          <div class="panel-header" data-action="toggle-panel" data-panel="panel-security">
             <div class="panel-header-title">
               ${svg('<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>', 'width="16" height="16"')}
               Security
@@ -404,11 +404,11 @@ async function viewSettings() {
                        autocomplete="new-password" style="max-width:300px" />
               </div>
               <div style="display:flex;gap:8px;flex-wrap:wrap">
-                <button type="button" class="btn btn-primary" onclick="_secUpdateCredentials()">
+                <button type="button" class="btn btn-primary" data-action="sec-update-credentials">
                   Update Credentials
                 </button>
                 <button type="button" class="btn btn-ghost" style="color:var(--error)"
-                        onclick="_secDisableAuth()">
+                        data-action="sec-disable-auth">
                   Disable Login
                 </button>
               </div>
@@ -433,7 +433,7 @@ async function viewSettings() {
                 <input class="form-control" id="sec-confirm-pw" type="password"
                        autocomplete="new-password" style="max-width:300px" />
               </div>
-              <button type="button" class="btn btn-primary" onclick="_secEnableAuth()">
+              <button type="button" class="btn btn-primary" data-action="sec-enable-auth">
                 Enable Login
               </button>
             `}
@@ -641,9 +641,9 @@ window._secDisableAuth = async function() {
       will have full access. Are you sure?
     </p>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       <button class="btn btn-primary" style="background:var(--error);border-color:var(--error)"
-              onclick="Modal.close();_secDoDisable()">Disable Login</button>
+              data-action="sec-do-disable">Disable Login</button>
     </div>
   `);
 };

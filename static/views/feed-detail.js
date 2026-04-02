@@ -125,7 +125,7 @@ function _renderFeedErrorBanner(feed) {
           <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
         <span style="flex:1;font-size:13px;color:var(--error);word-break:break-word">${escHTML(feed.last_error)}</span>
-        <button class="btn btn-ghost btn-sm" onclick="window._dismissFeedError(${feed.id})"
+        <button class="btn btn-ghost btn-sm" data-action="dismiss-feed-error" data-feed-id="${feed.id}"
                 style="flex-shrink:0;font-size:12px;padding:2px 8px">Dismiss</button>
       </div>`;
   } else {
@@ -158,7 +158,7 @@ async function _pollImportBanner(feedId) {
             : `${svg('<polyline points="20 6 9 17 4 12"/>', 'width="14" height="14"')} ${s.message}`}
         </div>
         ${isRunning ? `<div class="import-banner-bar"><div class="import-banner-fill" style="width:${pct}%"></div></div>` : ""}
-        ${!isRunning ? `<button class="import-banner-close" onclick="this.closest('.import-banner').parentElement.style.display='none'">×</button>` : ""}
+        ${!isRunning ? `<button class="import-banner-close" data-action="dismiss-import-banner">×</button>` : ""}
       </div>`;
   }
 
@@ -213,7 +213,6 @@ function _syncHiddenBadge(delta) {
 // Build the download button HTML for a given feed state (used on initial render and after poll).
 function _buildDlBtnHtml(feed, queueCount = 0) {
   const dlIcon = svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>');
-  const caretToggle = `const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))`;
   const caret = svg('<polyline points="6 9 12 15 18 9"/>');
 
   // Build the download button(s).
@@ -224,11 +223,11 @@ function _buildDlBtnHtml(feed, queueCount = 0) {
   let btnHtml = "";
   if (hasUnplayed) {
     // Active split button: "Download Unplayed" primary + "Download All" in dropdown
-    btnHtml = `<div class="ep-more-wrap" onclick="event.stopPropagation()">
+    btnHtml = `<div class="ep-more-wrap" data-action="stop-prop">
       <button class="btn btn-primary btn-sm btn-split-main" id="btn-dl-unplayed-feed">
         ${dlIcon} Download Unplayed (${feed.unplayed_available_count})
       </button>
-      <button class="btn btn-primary btn-sm btn-split-caret" onclick="${caretToggle}">${caret}</button>
+      <button class="btn btn-primary btn-sm btn-split-caret" data-action="toggle-more-wrap">${caret}</button>
       <div class="ep-more-dropdown" style="right:0;left:auto;min-width:190px">
         <button id="btn-dl-unplayed-feed-dd">Download Unplayed (${feed.unplayed_available_count})</button>
         <button id="btn-dl-all-feed">Download All (${feed.available_count})</button>
@@ -237,12 +236,12 @@ function _buildDlBtnHtml(feed, queueCount = 0) {
   } else if (hasAvailable) {
     if (activeDownloads) {
       // Unplayed all queued; played episodes still pending — disabled unplayed + active download-all
-      btnHtml = `<div class="ep-more-wrap" onclick="event.stopPropagation()">
+      btnHtml = `<div class="ep-more-wrap" data-action="stop-prop">
         <button class="btn btn-primary btn-sm btn-split-main" id="btn-dl-unplayed-feed" disabled
                 title="All unplayed episodes are queued or downloaded">
           ${dlIcon} Download Unplayed
         </button>
-        <button class="btn btn-primary btn-sm btn-split-caret" onclick="${caretToggle}">${caret}</button>
+        <button class="btn btn-primary btn-sm btn-split-caret" data-action="toggle-more-wrap">${caret}</button>
         <div class="ep-more-dropdown" style="right:0;left:auto;min-width:190px">
           <button id="btn-dl-unplayed-feed-dd" disabled>Download Unplayed</button>
           <button id="btn-dl-all-feed">Download All (${feed.available_count})</button>
@@ -256,7 +255,7 @@ function _buildDlBtnHtml(feed, queueCount = 0) {
     }
   } else if (activeDownloads) {
     // Everything queued or downloading — show disabled buttons
-    btnHtml = `<div class="ep-more-wrap" onclick="event.stopPropagation()">
+    btnHtml = `<div class="ep-more-wrap" data-action="stop-prop">
       <button class="btn btn-primary btn-sm btn-split-main" id="btn-dl-unplayed-feed" disabled
               title="All unplayed episodes are queued or downloaded">
         ${dlIcon} Download Unplayed
@@ -402,7 +401,7 @@ async function viewFeedDetail(feedId) {
                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
               </svg>
               <span style="flex:1;font-size:13px;color:var(--error);word-break:break-word">${escHTML(feed.last_error)}</span>
-              <button class="btn btn-ghost btn-sm" onclick="window._dismissFeedError(${feed.id})"
+              <button class="btn btn-ghost btn-sm" data-action="dismiss-feed-error" data-feed-id="${feed.id}"
                       style="flex-shrink:0;font-size:12px;padding:2px 8px">Dismiss</button>
             </div>` : ""}
           </div>
@@ -450,7 +449,7 @@ async function viewFeedDetail(feedId) {
 
       <!-- Settings panel -->
       <div class="panel" id="settings-panel">
-        <div class="panel-header" onclick="togglePanel('settings-panel')">
+        <div class="panel-header" data-action="toggle-panel" data-panel="settings-panel">
           <div class="panel-header-title">
             ${svg('<circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/>', 'width="16" height="16"')}
             Feed Settings
@@ -496,7 +495,7 @@ async function viewFeedDetail(feedId) {
                 ${feed.image_url
                   ? `<img id="feed-art-preview" src="${feed.image_url}"
                           style="width:56px;height:56px;border-radius:8px;object-fit:cover;flex-shrink:0"
-                          onerror="this.style.display='none'" />`
+                          />`
                   : `<div id="feed-art-preview" style="width:56px;height:56px;border-radius:8px;background:var(--bg-3);flex-shrink:0;display:flex;align-items:center;justify-content:center">${_PODCAST_SVG}</div>`}
                 <div style="display:flex;flex-direction:column;gap:6px">
                   <input type="file" id="feed-cover-file" accept="image/*" style="display:none" />
@@ -540,7 +539,7 @@ async function viewFeedDetail(feedId) {
                         <input type="radio" name="autoclean_mode" value="unplayed"
                                ${(feed.autoclean_mode || "unplayed") === "unplayed" ? "checked" : ""}
                                style="margin-top:3px;flex-shrink:0"
-                               onchange="_feedUpdateAutocleanMode()" />
+                               data-action="feed-autoclean-mode" />
                         <span>
                           <strong style="color:var(--text)">Keep unplayed episodes</strong><br>
                           <span style="font-size:11px;color:var(--text-3)">Deletes any episode you've fully played. Partially listened episodes are never deleted.</span>
@@ -550,7 +549,7 @@ async function viewFeedDetail(feedId) {
                         <input type="radio" name="autoclean_mode" value="recent"
                                ${(feed.autoclean_mode || "unplayed") === "recent" ? "checked" : ""}
                                style="margin-top:3px;flex-shrink:0"
-                               onchange="_feedUpdateAutocleanMode()" />
+                               data-action="feed-autoclean-mode" />
                         <span>
                           <strong style="color:var(--text)">Keep N most recent episodes</strong><br>
                           <span style="font-size:11px;color:var(--text-3)">Deletes the oldest downloads once the count exceeds N. Unplayed episodes are never deleted.</span>
@@ -568,7 +567,7 @@ async function viewFeedDetail(feedId) {
                   </div>
                   <div style="margin-bottom:4px">
                     <button type="button" class="btn btn-ghost btn-sm" id="btn-run-feed-autoclean"
-                            onclick="_runFeedAutocleanNow(${feed.id})">
+                            data-action="feed-autoclean-now" data-feed-id="${feed.id}">
                       ${svg('<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>')}
                       Run cleanup now
                     </button>
@@ -654,7 +653,7 @@ async function viewFeedDetail(feedId) {
 
       <!-- Supplementary feeds -->
       <div class="panel ${supplementary.length > 0 ? "open" : ""}" id="supplementary-panel">
-        <div class="panel-header" onclick="togglePanel('supplementary-panel')">
+        <div class="panel-header" data-action="toggle-panel" data-panel="supplementary-panel">
           <div class="panel-header-title">
             ${svg('<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>', 'width="16" height="16"')}
             Supplementary Feeds
@@ -675,7 +674,7 @@ async function viewFeedDetail(feedId) {
                 <div class="episode-item" style="padding:8px 0;border-bottom:1px solid var(--border)" id="sf-${sf.id}">
                   <div class="episode-art" style="width:32px;height:32px;flex-shrink:0">
                     ${sf.image_url
-                      ? `<img src="${sf.image_url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="episode-art-placeholder" style="width:32px;height:32px;display:none">${_PODCAST_SVG}</div>`
+                      ? `<img src="${sf.image_url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover" /><div class="episode-art-placeholder" style="width:32px;height:32px;display:none">${_PODCAST_SVG}</div>`
                       : `<div class="episode-art-placeholder" style="width:32px;height:32px">${_PODCAST_SVG}</div>`}
                   </div>
                   <div class="episode-info">
@@ -687,7 +686,7 @@ async function viewFeedDetail(feedId) {
                     </div>
                   </div>
                   <div class="episode-actions">
-                    <button class="btn btn-ghost btn-sm" onclick="unlinkSupplementaryFeed(${id}, ${sf.id})">Unlink</button>
+                    <button class="btn btn-ghost btn-sm" data-action="unlink-feed" data-podcast-id="${id}" data-feed-id="${sf.id}">Unlink</button>
                   </div>
                 </div>`).join("")}
           </div>
@@ -703,14 +702,14 @@ async function viewFeedDetail(feedId) {
 
       <!-- Episodes list -->
       <div class="panel open" id="episodes-panel">
-        <div class="panel-header" onclick="togglePanel('episodes-panel')">
+        <div class="panel-header" data-action="toggle-panel" data-panel="episodes-panel">
           <div class="panel-header-title">
             ${svg('<path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3zM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3z"/>', 'width="16" height="16"')}
             Episodes
             <span class="badge badge-default">${episodes.length}</span>
             ${feed.hidden_count > 0 ? `<span class="badge badge-default" id="hidden-count-badge" style="opacity:0.6">${feed.hidden_count} hidden</span>` : ""}
           </div>
-          <div style="display:flex;gap:8px;align-items:center" onclick="event.stopPropagation()">
+          <div style="display:flex;gap:8px;align-items:center" data-action="stop-prop">
             ${feed.hidden_count > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-show-hidden">Show Hidden</button>` : ""}
             <svg class="panel-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="6 9 12 15 18 9"/>
@@ -719,36 +718,35 @@ async function viewFeedDetail(feedId) {
         </div>
         <div class="panel-body" style="padding:0">
           <!-- Quick actions: Mark all as played + Download (collapse with panel) -->
-          <div id="episodes-quick-actions" onclick="event.stopPropagation()">
+          <div id="episodes-quick-actions" data-action="stop-prop">
             ${feed.episode_count > 0 ? `<button class="btn btn-ghost btn-sm" id="btn-mark-all-played">Mark all as played</button>` : ""}
             <span id="dl-btn-area">${_buildDlBtnHtml(feed, initialQueueCount)}</span>
           </div>
           <!-- Select bar -->
-          <div id="select-bar" onclick="event.stopPropagation()">
+          <div id="select-bar" data-action="stop-prop">
             <button class="btn btn-ghost btn-sm" id="btn-bulk-select">Select Episodes</button>
-            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-all" onclick="_bulkSelectAll()">Select All</button>
-            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-none" onclick="_bulkSelectNone()">Select None</button>
-            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-inverse" onclick="_bulkSelectInverse()">Select Inverse</button>
+            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-all" data-action="bulk-select-all">Select All</button>
+            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-none" data-action="bulk-select-none">Select None</button>
+            <button class="btn btn-ghost btn-sm hidden" id="bulk-select-inverse" data-action="bulk-select-inverse">Select Inverse</button>
             <div class="ep-more-wrap hidden" id="bulk-apply-wrap">
-              <button class="btn btn-primary btn-sm" id="bulk-apply-btn"
-                      onclick="const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))">
+              <button class="btn btn-primary btn-sm" id="bulk-apply-btn" data-action="toggle-more-wrap">
                 Apply to <span id="bulk-count">0</span> selected
                 ${svg('<polyline points="6 9 12 15 18 9"/>', 'width="12" height="12"')}
               </button>
               <div class="ep-more-dropdown" style="left:0;right:auto;min-width:180px">
-                <button id="bulk-btn-download" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkAct('download')">
+                <button id="bulk-btn-download" data-action="bulk-act-close-download">
                   ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>', 'width="14" height="14"')}
                   Download
                 </button>
-                <button id="bulk-btn-played" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkActPlayed()">
+                <button id="bulk-btn-played" data-action="bulk-act-close-played">
                   ${svg('<polyline points="20 6 9 17 4 12"/>', 'width="14" height="14" stroke-width="3.5"')}
                   <span id="bulk-btn-played-label">Mark Played</span>
                 </button>
-                <button id="bulk-btn-hidden" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkActHidden()">
+                <button id="bulk-btn-hidden" data-action="bulk-act-close-hidden">
                   ${svg('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>', 'width="14" height="14"')}
                   <span id="bulk-btn-hidden-label">Hide</span>
                 </button>
-                <button id="bulk-btn-delete" style="color:var(--error)" onclick="document.getElementById('bulk-apply-wrap').removeAttribute('data-open');_bulkAct('delete_file')">
+                <button id="bulk-btn-delete" style="color:var(--error)" data-action="bulk-act-close-delete">
                   ${svg('<path d="M3 6h18"/><path d="M8 4h8"/><path d="M5 6l1.5 15h11L19 6"/>', 'width="14" height="14"')}
                   Delete Files
                 </button>
@@ -759,7 +757,7 @@ async function viewFeedDetail(feedId) {
             <div style="display:flex;align-items:center;gap:8px;padding:0 12px 8px">
               <input class="form-control" id="ep-filter" placeholder="Filter by title…"
                      style="flex:1;max-width:min(260px, calc(100vw - 160px));height:30px;font-size:13px"
-                     oninput="_filterEpisodes()" />
+                     data-action="filter-episodes" />
               <button class="btn btn-ghost btn-sm" id="btn-sort-order" title="Toggle sort order">
                 Sort Oldest First
               </button>
@@ -1032,7 +1030,7 @@ async function viewFeedDetail(feedId) {
             <div class="episode-item" style="padding:8px 0;border-bottom:1px solid var(--border)" id="sf-${sf.id}">
               <div class="episode-art" style="width:32px;height:32px;flex-shrink:0">
                 ${sf.image_url
-                  ? `<img src="${sf.image_url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="episode-art-placeholder" style="width:32px;height:32px;display:none">${_PODCAST_SVG}</div>`
+                  ? `<img src="${sf.image_url}" style="width:32px;height:32px;border-radius:4px;object-fit:cover" /><div class="episode-art-placeholder" style="width:32px;height:32px;display:none">${_PODCAST_SVG}</div>`
                   : `<div class="episode-art-placeholder" style="width:32px;height:32px">${_PODCAST_SVG}</div>`}
               </div>
               <div class="episode-info">
@@ -1044,7 +1042,7 @@ async function viewFeedDetail(feedId) {
                 </div>
               </div>
               <div class="episode-actions">
-                <button class="btn btn-ghost btn-sm" onclick="unlinkSupplementaryFeed(${id}, ${sf.id})">Unlink</button>
+                <button class="btn btn-ghost btn-sm" data-action="unlink-feed" data-podcast-id="${id}" data-feed-id="${sf.id}">Unlink</button>
               </div>
             </div>`).join("");
         const badge = document.querySelector("#supplementary-panel .panel-header .badge");
@@ -1584,10 +1582,10 @@ function episodeRow(ep, feed) {
 
   if (ep.hidden) {
     return `<div class="episode-item" id="ep-${ep.id}" data-status="${ep.status}" data-hidden="1" style="opacity:0.45">
-      <input type="checkbox" class="bulk-check ep-checkbox" data-ep-id="${ep.id}" onclick="event.stopPropagation();_bulkToggle(${ep.id})" />
+      <input type="checkbox" class="bulk-check ep-checkbox" data-ep-id="${ep.id}" data-action="bulk-toggle" />
       <div class="episode-art">
         ${imgSrc
-          ? `<img src="${imgSrc}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
+          ? `<img src="${imgSrc}" alt="" loading="lazy" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
           : `<div class="episode-art-placeholder">${_PODCAST_SVG}</div>`}
       </div>
       <div class="episode-info">
@@ -1600,40 +1598,40 @@ function episodeRow(ep, feed) {
       </div>
       <div class="episode-actions">
         <button class="btn btn-ghost btn-sm" title="Unhide episode"
-                onclick="event.stopPropagation();unhideEpisode(${ep.id})">Unhide</button>
+                data-action="unhide-episode" data-ep-id="${ep.id}">Unhide</button>
       </div>
     </div>`;
   }
 
   // Art area: clickable to upload image only when downloaded
   const artContent = imgSrc
-    ? `<img src="${imgSrc}" alt="" loading="lazy" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
+    ? `<img src="${imgSrc}" alt="" loading="lazy" /><div class="episode-art-placeholder" style="display:none">${_PODCAST_SVG}</div>`
     : `<div class="episode-art-placeholder">${_PODCAST_SVG}</div>`;
   const artArea = isDownloaded
-    ? `<div class="episode-art" title="Upload cover art" style="cursor:pointer" onclick="event.stopPropagation();uploadEpisodeImageClick(${ep.id})">${artContent}</div>`
+    ? `<div class="episode-art" title="Upload cover art" style="cursor:pointer" data-action="upload-ep-image" data-ep-id="${ep.id}">${artContent}</div>`
     : `<div class="episode-art">${artContent}</div>`;
 
   // Build action buttons - delete/download depends on status
   let statusActionBtn = "";
   if ((ep.status === "pending" || ep.status === "failed") && ep.enclosure_url) {
     statusActionBtn = `<button class="btn btn-ghost btn-sm btn-icon" title="Download"
-                               onclick="event.stopPropagation();queueEpisode(${ep.id})">
+                               data-action="queue-episode" data-ep-id="${ep.id}">
       ${svg('<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>')}
     </button>`;
   } else if (isDownloaded && !ep.file_missing) {
     statusActionBtn = `
     <button class="btn btn-ghost btn-sm btn-icon" title="Delete file"
-            onclick="event.stopPropagation();deleteEpisodeFile(${ep.id})">
+            data-action="delete-episode-file" data-ep-id="${ep.id}">
       ${svg('<path d="M3 6h18"/><path d="M8 4h8"/><path d="M5 6l1.5 15h11L19 6"/><path d="M10 10v8"/><path d="M14 10v8"/>')}
     </button>`;
   } else if (isDownloaded && ep.file_missing) {
     statusActionBtn = `<button class="btn btn-ghost btn-sm btn-icon" title="Delete record"
-                               onclick="event.stopPropagation();deleteEpisodeFile(${ep.id})">
+                               data-action="delete-episode-file" data-ep-id="${ep.id}">
       ${svg('<path d="M3 6h18"/><path d="M8 4h8"/><path d="M5 6l1.5 15h11L19 6"/><path d="M10 10v8"/><path d="M14 10v8"/>')}
     </button>`;
   } else if (ep.status === "queued" || ep.status === "downloading") {
     statusActionBtn = `<button class="btn btn-ghost btn-sm btn-icon" title="Cancel download"
-                               onclick="event.stopPropagation();cancelEpisode(${ep.id})">
+                               data-action="cancel-episode" data-ep-id="${ep.id}">
       ${svg('<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>')}
     </button>`;
   }
@@ -1641,28 +1639,27 @@ function episodeRow(ep, feed) {
   // Per-file buttons only available when downloaded
   const playBtn = (isDownloaded && !ep.file_missing) ? epPlayBtn(ep) : "";
 
-  const _close = `this.closest('.ep-more-wrap').removeAttribute('data-open');`;
   const moreDropdown = `
-  <div class="ep-more-wrap" onclick="event.stopPropagation()">
+  <div class="ep-more-wrap" data-action="stop-prop">
     <button class="btn btn-ghost btn-sm btn-icon ep-more-btn" title="More options"
-            onclick="const w=this.closest('.ep-more-wrap');w.toggleAttribute('data-open');if(w.hasAttribute('data-open')){const d=w.querySelector('.ep-more-dropdown');if(d)positionDropdown(d);}document.querySelectorAll('.ep-more-wrap[data-open]').forEach(el=>el!==w&&el.removeAttribute('data-open'))">
+            data-action="toggle-more-wrap">
       ${svg('<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>')}
     </button>
     <div class="ep-more-dropdown">
       ${isDownloaded && !ep.file_missing ? `
-      <a onclick="${_close}" href="/api/episodes/${ep.id}/file" download>
+      <a data-action="ep-more-close" href="/api/episodes/${ep.id}/file" download>
         ${svg('<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>', 'width="14" height="14"')}
         Save to device
       </a>
-      <button onclick="${_close}showSetNumberModal(${ep.id}, ${ep.seq_number ?? "null"}, ${ep.seq_number_locked})">
+      <button data-action="ep-more-close-seq" data-ep-id="${ep.id}" data-seq="${ep.seq_number ?? ""}" data-locked="${ep.seq_number_locked}">
         ${svg('<line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/><line x1="10" y1="3" x2="8" y2="21"/><line x1="16" y1="3" x2="14" y2="21"/>', 'width="14" height="14"')}
         Set episode number
       </button>
-      <button onclick="${_close}showEpisodeTagsModal(${ep.id}, ${JSON.stringify(ep.custom_id3_tags || null)})">
+      <button data-action="ep-more-close-tags" data-ep-id="${ep.id}" data-tags="${escHTML(JSON.stringify(ep.custom_id3_tags || null))}">
         ${svg('<path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/>', 'width="14" height="14"')}
         Edit ID3 tags
       </button>` : ""}
-      <button onclick="${_close}hideEpisode(${ep.id})">
+      <button data-action="ep-more-close-hide" data-ep-id="${ep.id}">
         ${svg('<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/><line x1="1" y1="1" x2="23" y2="23"/>', 'width="14" height="14"')}
         Hide episode
       </button>
@@ -1671,7 +1668,7 @@ function episodeRow(ep, feed) {
 
   const actionBtns = playBtn + statusActionBtn + `
   <button class="btn btn-ghost btn-sm btn-icon" title="${ep.played ? "Mark as unplayed" : "Mark as played"}"
-          onclick="event.stopPropagation();toggleEpPlayed(${ep.id})">
+          data-action="toggle-ep-played" data-ep-id="${ep.id}">
     ${ep.played
       ? svg('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>')
       : svg('<polyline points="20 6 9 17 4 12"/>', 'stroke-width="3.5"')}
@@ -1681,8 +1678,8 @@ function episodeRow(ep, feed) {
     ? `<div class="ep-notes-panel"><div class="ep-notes-inner">${_sanitizeNotes(ep.description)}</div></div>`
     : "";
 
-  return `<div class="episode-item${ep.description ? " has-notes" : ""}" id="ep-${ep.id}" data-status="${ep.status}" data-title="${(ep.title || "").toLowerCase().replace(/"/g, "&quot;")}"${ep.played ? ' data-played="1"' : ""}${ep.description ? ` onclick="_toggleEpNotes(${ep.id})"` : ""}>
-    <input type="checkbox" class="bulk-check ep-checkbox" data-ep-id="${ep.id}" onclick="event.stopPropagation();_bulkToggle(${ep.id})" />
+  return `<div class="episode-item${ep.description ? " has-notes" : ""}" id="ep-${ep.id}" data-status="${ep.status}" data-title="${(ep.title || "").toLowerCase().replace(/"/g, "&quot;")}"${ep.played ? ' data-played="1"' : ""}${ep.description ? ` data-action="toggle-ep-notes" data-ep-id="${ep.id}"` : ""}>
+    <input type="checkbox" class="bulk-check ep-checkbox" data-ep-id="${ep.id}" data-action="bulk-toggle" />
     ${artArea}
     <div class="episode-info">
       <div class="episode-title">
@@ -1795,7 +1792,7 @@ window.showEpisodeTagsModal = function (epId, currentTags) {
       </table>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       ${Object.keys(current).length > 0 ? `<button class="btn btn-ghost" id="btn-clear-ep-tags">Clear All</button>` : ""}
       <button class="btn btn-primary" id="btn-save-ep-tags">Save</button>
     </div>`,
@@ -1838,18 +1835,18 @@ window.showSetEpisodeImageModal = function (epId, current) {
       <div style="display:flex;gap:10px;align-items:flex-start">
         <img id="ep-art-modal-preview" src="${current}"
              style="width:64px;height:64px;border-radius:8px;object-fit:cover;flex-shrink:0;${current ? "" : "display:none"}"
-             onerror="this.style.display='none'" />
+             />
         <div style="flex:1">
           <input class="form-control" id="ep-art-input" type="url"
                  value="${current}" placeholder="https://… (leave blank to clear)"
                  autofocus
-                 oninput="const p=document.getElementById('ep-art-modal-preview');p.src=this.value;p.style.display=this.value?'':'none'" />
+                 data-action="ep-art-url-preview" />
           <div class="form-hint">Overrides the RSS artwork for this episode only.</div>
         </div>
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       ${current ? `<button class="btn btn-ghost" id="btn-clear-ep-art">Clear Override</button>` : ""}
       <button class="btn btn-primary" id="btn-save-ep-art">Save</button>
     </div>`,
@@ -1882,7 +1879,7 @@ window.showSetNumberModal = function (epId, current, locked) {
       <div class="form-hint">Setting a number anchors this episode and renumbers all later episodes from it (e.g. set to 901 → next episode becomes 902, 903, …). Leave blank to clear the override and revert to auto-numbering.</div>
     </div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       ${locked ? `<button class="btn btn-ghost" id="btn-clear-num">Clear Override</button>` : ""}
       <button class="btn btn-primary" id="btn-save-num">Save</button>
     </div>`,
@@ -1987,7 +1984,7 @@ function showRenumberModal(feedId) {
       Update ID3 tags in files to reflect updated numbers
     </label>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       <button class="btn btn-primary" id="btn-confirm-renumber">Renumber</button>
     </div>`,
     (body) => {
@@ -2032,7 +2029,7 @@ function showUploadFeedXmlModal(feedId, feed) {
     </div>
     <div id="xml-upload-result" style="font-size:13px;margin-top:8px;display:none"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       <button class="btn btn-primary" id="btn-start-xml-upload">Upload</button>
     </div>`,
     (body) => {
@@ -2365,7 +2362,7 @@ function showImportFilesModal(feedId, feed) {
       <div id="import-dir-browser" class="import-dir-browser"></div>
       <div id="import-step1-error" style="color:var(--error);font-size:13px;margin-top:8px;${errorMsg ? "" : "display:none"}">${errorMsg || ""}</div>
       <div class="modal-actions" style="margin-top:12px">
-        <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+        <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
         <button class="btn btn-primary" id="btn-scan-dir">Scan This Folder</button>
       </div>`,
       (body) => {
@@ -2470,7 +2467,7 @@ function showImportFilesModal(feedId, feed) {
         </p>
         <div class="modal-actions">
           <button class="btn btn-ghost" id="btn-import-back">\u2190 Back</button>
-          <button class="btn btn-primary" onclick="Modal.close()">Done</button>
+          <button class="btn btn-primary" data-action="modal-close">Done</button>
         </div>`,
         (body) => {
           body.querySelector("#btn-import-back").addEventListener("click", () => showStep1());
@@ -2858,7 +2855,7 @@ function showDeleteFeedModal(feed) {
     ${feed.downloaded_count > 0 ? `<div style="color:var(--error);font-size:12px;margin:6px 0 20px 24px">${feed.downloaded_count} audio file${feed.downloaded_count !== 1 ? "s" : ""} will be removed</div>` : `<div style="margin-bottom:20px"></div>`}
     <div id="delete-error"></div>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+      <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
       <button class="btn btn-danger" id="btn-confirm-delete">Delete Feed</button>
     </div>`,
     (body) => {

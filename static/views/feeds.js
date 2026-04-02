@@ -218,7 +218,7 @@ async function viewFeeds() {
       <div class="search-bar" style="display:flex;align-items:center;gap:8px">
         <div class="search-input-wrap" style="flex:1">
           ${svg('<circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>')}
-          <input class="form-control" id="feed-search" placeholder="Search feeds…" oninput="filterFeedCards()" />
+          <input class="form-control" id="feed-search" placeholder="Search feeds…" data-action="filter-feed-cards" />
         </div>
         <select class="form-control" id="feed-sort" style="flex-shrink:0;width:auto" title="Sort order">
           ${_FEED_SORTS.map(o => `<option value="${o.value}"${_feedsSort === o.value ? " selected" : ""}>${o.label}</option>`).join("")}
@@ -257,7 +257,7 @@ async function viewFeeds() {
       <div class="opml-prog-status" id="opml-prog-status">Importing feeds…</div>
       <div class="opml-prog-log" id="opml-prog-log"></div>
       <div class="modal-actions" id="opml-prog-actions" style="display:none">
-        <button class="btn btn-primary" onclick="Modal.close()">Done</button>
+        <button class="btn btn-primary" data-action="modal-close">Done</button>
       </div>
     `);
     const log      = document.getElementById("opml-prog-log");
@@ -304,9 +304,9 @@ async function viewFeeds() {
   });
   // Feed card quick actions (sync / delete) via event delegation
   document.getElementById("feeds-grid")?.addEventListener("click", async (e) => {
-    const btn = e.target.closest("[data-action]");
+    const btn = e.target.closest("[data-action='sync'], [data-action='delete']");
     if (!btn) return;
-    e.stopPropagation(); // don't navigate to feed detail
+    e.stopPropagation(); // don't let the click bubble to the card's navigate action
     const id = parseInt(btn.dataset.id, 10);
 
     if (btn.dataset.action === "sync") {
@@ -336,7 +336,7 @@ async function viewFeeds() {
           <span>Also delete all downloaded files and folders</span>
         </label>
         <div class="modal-actions">
-          <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+          <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
           <button class="btn btn-danger" id="btn-confirm-delete">Delete</button>
         </div>
       `, () => {
@@ -397,7 +397,7 @@ function feedCard(f) {
                data-id="${f.id}"
                data-title="${(f.title || "").toLowerCase()}"
                data-author="${(f.author || "").toLowerCase()}"
-               onclick="if (!event.target.closest('[data-action]')) Router.navigate('/feeds/${f.id}')">
+               data-action="navigate" data-path="/feeds/${f.id}">
     <div class="feed-card-art">${artImg(f.custom_image_url || f.image_url, "", "", !f.active)}</div>
     <div class="feed-card-title">${f.title || f.url}</div>
     <div class="feed-card-author">${f.author || "Unknown author"}</div>
@@ -466,7 +466,7 @@ function showAddFeedModal() {
             "Create a podcast entry without a feed. Import episodes from files later via the feed page.")}
         </div>
         <div class="modal-actions" style="padding-top:0;border:none">
-          <button class="btn btn-ghost" onclick="Modal.close()">Cancel</button>
+          <button class="btn btn-ghost" data-action="modal-close">Cancel</button>
         </div>`;
       B.querySelector("#pick-rss").addEventListener("click",    () => goTo("rss"));
       B.querySelector("#pick-xml").addEventListener("click",    () => goTo("xml"));

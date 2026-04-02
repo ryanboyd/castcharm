@@ -21,7 +21,7 @@ function _art(image_url) {
     <div style="position:absolute;inset:0;border-radius:5px;background:var(--bg-3);
                 display:flex;align-items:center;justify-content:center">${icon}</div>
     ${image_url
-      ? `<img src="${image_url}" onerror="this.remove()"
+      ? `<img src="${image_url}"
               style="position:absolute;inset:0;width:100%;height:100%;
                      object-fit:cover;border-radius:5px" />`
       : ""}
@@ -426,7 +426,7 @@ function _yearChart(buckets) {
       <span style="font-size:10px;color:var(--text-3);flex-shrink:0">${buckets[0].year}</span>
       <input type="range" min="0" max="${buckets.length - _YEAR_WINDOW}" value="${startIdx}" step="1"
              style="flex:1;accent-color:var(--primary)"
-             oninput="_yearChartSlide(this.value)">
+             data-action="year-chart-slide">
       <span style="font-size:10px;color:var(--text-3);flex-shrink:0">${buckets[buckets.length - 1].year}</span>
       <span id="year-chart-range-lbl" style="font-size:10px;color:var(--text-3);flex-shrink:0;min-width:70px;text-align:right">${visible[0].year} – ${visible[visible.length - 1].year}</span>
     </div>` : "";
@@ -871,8 +871,7 @@ function _feedRow(f) {
       </td>
       <td style="text-align:right;white-space:nowrap">
         <button class="btn btn-ghost btn-sm stats-focus-btn ${isFocused ? "active" : ""}"
-                data-feed-id="${f.feed_id}"
-                onclick="toggleFeedFocus(${f.feed_id})">
+                data-action="stats-toggle-feed" data-feed-id="${f.feed_id}">
           ${isFocused ? "← Global" : "Show podcast stats"}
         </button>
       </td>

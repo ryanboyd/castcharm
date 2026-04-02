@@ -10,7 +10,7 @@
   <link rel="apple-touch-icon" sizes="180x180" href="/static/icon-apple.png" />
 </head>
 <body>
-  <div id="sidebar-overlay" onclick="closeSidebar()"></div>
+  <div id="sidebar-overlay"></div>
 
   <div id="app" style="display:none">
     <aside id="sidebar">
@@ -21,7 +21,7 @@
           <span class="logo-tagline">Podcast Manager</span>
         </div>
       </a>
-      <button class="nav-item" id="nav-search-btn" onclick="showSearch()" style="width:100%;border:none;background:none;cursor:pointer;text-align:left">
+      <button class="nav-item" id="nav-search-btn" style="width:100%;border:none;background:none;cursor:pointer;text-align:left">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
         Search
       </button>
@@ -65,10 +65,10 @@
     </aside>
 
     <div id="mobile-header">
-      <button id="hamburger" aria-label="Open menu" onclick="toggleSidebar()">
+      <button id="hamburger" aria-label="Open menu">
         <span></span><span></span><span></span>
       </button>
-      <div class="mobile-header-logo" onclick="Router.navigate('/')" style="cursor:pointer">
+      <div class="mobile-header-logo" id="mobile-header-logo" style="cursor:pointer">
         <img src="/static/icon-64.png" alt="" class="mobile-header-icon" />
         <span class="logo-text">CastCharm</span>
       </div>
@@ -88,7 +88,7 @@
     <div id="modal">
       <div id="modal-header">
         <h2 id="modal-title"></h2>
-        <button id="modal-close" onclick="Modal.close()">&times;</button>
+        <button id="modal-close">&times;</button>
       </div>
       <div id="modal-body"></div>
     </div>

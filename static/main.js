@@ -1,6 +1,18 @@
 "use strict";
 
 // ============================================================
+// Wire static-shell event handlers (previously inline onclick= in index.html)
+// We do this here rather than inline so we can ship a strict CSP that blocks
+// external script sources. All referenced functions are defined in the scripts
+// loaded before main.js (router.js, ui.js, search.js).
+// ============================================================
+document.getElementById("sidebar-overlay").addEventListener("click", closeSidebar);
+document.getElementById("nav-search-btn").addEventListener("click", showSearch);
+document.getElementById("hamburger").addEventListener("click", toggleSidebar);
+document.getElementById("mobile-header-logo").addEventListener("click", () => Router.navigate("/"));
+document.getElementById("modal-close").addEventListener("click", () => Modal.close());
+
+// ============================================================
 // Register routes and boot
 // ============================================================
 Router.register("/", viewDashboard);

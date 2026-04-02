@@ -21,7 +21,7 @@ class GlobalSettingsBase(BaseModel):
     episode_page_size: Optional[int] = 10000
     keep_latest: Optional[int] = None
     keep_unplayed: bool = True
-    auto_played_threshold: int = 95
+    auto_played_threshold: int = 98
     theme: str = "midnight"
     show_suggested_listening: bool = True
     timezone: str = "UTC"

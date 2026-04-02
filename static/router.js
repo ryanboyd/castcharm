@@ -71,9 +71,9 @@ function _showSettingsNavGuard() {
   Modal.open("Unsaved Changes", `
     <p style="color:var(--text-2);font-size:14px;margin-bottom:20px">Your settings have unsaved changes. Would you like to save them before leaving?</p>
     <div class="modal-actions">
-      <button class="btn btn-ghost" onclick="Modal.close();window._settingsPendingNav=null">Stay</button>
-      <button class="btn btn-ghost" onclick="window._settingsNavDiscard()">Discard</button>
-      <button class="btn btn-primary" onclick="window._settingsNavSave()">Save &amp; Leave</button>
+      <button class="btn btn-ghost" data-action="settings-stay">Stay</button>
+      <button class="btn btn-ghost" data-action="settings-discard">Discard</button>
+      <button class="btn btn-primary" data-action="settings-save">Save &amp; Leave</button>
     </div>
   `);
 }
