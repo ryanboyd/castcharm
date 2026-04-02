@@ -1670,7 +1670,7 @@ function episodeRow(ep, feed) {
   <button class="btn btn-ghost btn-sm btn-icon" title="${ep.played ? "Mark as unplayed" : "Mark as played"}"
           data-action="toggle-ep-played" data-ep-id="${ep.id}">
     ${ep.played
-      ? svg('<polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-3.5"/>')
+      ? svg('<polyline points="1 2 1 8 7 8"/><path d="M3.51 13a9 9 0 1 0 .49-3.5"/>')
       : svg('<polyline points="20 6 9 17 4 12"/>', 'stroke-width="3.5"')}
   </button>` + moreDropdown;
 

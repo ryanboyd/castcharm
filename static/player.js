@@ -183,6 +183,32 @@ const Player = (() => {
     document.body.style.overflow = "";
   }
 
+  // ── After mark-played: reset button state + remove from Continue Listening ──
+
+  function _afterMarkPlayed(epId) {
+    // Strip resumable state so _syncPlayBtns renders the plain play icon.
+    document.querySelectorAll(`.ep-play-btn[data-ep-id="${epId}"]`).forEach((btn) => {
+      delete btn.dataset.resumable;
+      delete btn.dataset.resume;
+    });
+    _syncPlayBtns();
+    // Flip the toggle-played button to "Mark as unplayed" state.
+    const toggleBtn = document.querySelector(`[data-action="toggle-ep-played"][data-ep-id="${epId}"]`);
+    if (toggleBtn) {
+      toggleBtn.title = "Mark as unplayed";
+      const icon = toggleBtn.querySelector("svg");
+      if (icon) icon.outerHTML = svg('<polyline points="1 2 1 8 7 8"/><path d="M3.51 13a9 9 0 1 0 .49-3.5"/>');
+    }
+    // Remove from Continue Listening card on the dashboard (if present).
+    const clItem = document.getElementById(`cl-ep-${epId}`);
+    if (clItem) {
+      const card = clItem.closest(".card");
+      animateRemove(clItem, () => {
+        if (card && !card.querySelector("[id^='cl-ep-']")) animateRemove(card);
+      });
+    }
+  }
+
   // ── Sync play/pause icons on all episode rows ──────────────
 
   function _syncPlayBtns() {
@@ -346,6 +372,8 @@ const Player = (() => {
   // ── Close / stop player ────────────────────────────────────
 
   function _closePlayer() {
+    const stoppedId = _currentEp?.id;
+    const stoppedPos = (_audio && isFinite(_audio.currentTime)) ? _audio.currentTime : 0;
     if (_audio) {
       _audio.pause();
       _audio.src = "";
@@ -357,6 +385,13 @@ const Player = (() => {
     if (bar) bar.classList.add("hidden");
     document.body.classList.remove("has-player");
     _currentEp = null;
+    // Mark buttons for the stopped episode as resumable so they show |▶ immediately.
+    if (stoppedId && stoppedPos > 0) {
+      document.querySelectorAll(`.ep-play-btn[data-ep-id="${stoppedId}"]`).forEach((btn) => {
+        btn.dataset.resumable = "1";
+        btn.dataset.resume = "1";
+      });
+    }
     _syncPlayBtns();
   }
 
@@ -483,7 +518,7 @@ const Player = (() => {
         _clearSleepTimer();
         _sleepMinutes = 0;
         _currentEp = null;
-        _syncPlayBtns();
+        _afterMarkPlayed(epId);
         _collapse();
         _el("player-bar")?.classList.add("hidden");
         document.body.classList.remove("has-player");
@@ -506,7 +541,10 @@ const Player = (() => {
         }
       } else {
         API.togglePlayed(epId)
-          .then(() => Toast.success("Marked as played"))
+          .then(() => {
+            _afterMarkPlayed(epId);
+            Toast.success("Marked as played");
+          })
           .catch((e) => Toast.error(e.message));
       }
     });
